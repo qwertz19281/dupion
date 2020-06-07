@@ -1,0 +1,12 @@
+[workspace]
+
+members = [
+    "dupion",
+    "platter-walk",
+    "reapfrog",
+    "libarchive-rust",
+]
+
+[profile.release]
+lto = true
+codegen-units = 1

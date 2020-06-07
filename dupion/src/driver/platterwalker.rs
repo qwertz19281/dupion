@@ -1,0 +1,422 @@
+use super::*;
+use std::{io::ErrorKind, path::Path};
+use std::os::unix::fs::MetadataExt;
+use platter_walk::{Order, ToScan};
+use vfs::VfsId;
+use reapfrog::MultiFileReadahead;
+use sha2::{Digest, Sha512};
+use std::{sync::{atomic::Ordering, Arc, Mutex}, io::{Read, Write, self}, fs::{Metadata, File}};
+use util::*;
+use zip::{open_zip, decode_zip};
+use io::{BufReader, Cursor};
+
+pub struct PlatterWalker {
+    pub entries: Option<Vec<(u64,VfsId)>>,
+}
+
+impl Driver for PlatterWalker {
+    fn run(&mut self, state: &'static RwLock<State>, opts: &'static Opts, phase: Phase) -> AnyhowResult<()> {
+        match phase {
+            Phase::Size => {
+                assert!(self.entries.is_none());
+
+                let mut scan = ToScan::<()>::new();
+
+                scan.prefetch_dirs(opts.dir_prefetch);
+                scan.set_order(Order::Content);
+                //scan.set_batchsize(usize::MAX);
+
+                let mut dest = Vec::new();
+                let mut hash_now = Vec::new();
+
+                for root in &opts.paths {
+                    if root.is_dir() {
+                        try_returnerr!(scan.add_root(root.clone()),"\tError addding root: {} ({})",opts.path_disp(&root));
+                    } else if root.is_file() {
+                        size_file(
+                            root,
+                            &root.metadata()?,
+                            0,
+                            &mut dest,
+                            &mut hash_now,
+                            &mut state.write().unwrap(), opts
+                        )?;
+                    }
+                }
+
+                scan.set_prefilter(Box::new(move |path,ft,_| {
+                    ft.is_file() && !ft.is_symlink() && path.to_str().is_some()
+                }));
+
+                
+
+                for entry_set in scan {
+                    let mut s = state.write().unwrap();
+
+                    if let Some(entry_set) = soft_error!(entry_set,"\tError: {}",) {
+                        for (phy_off, mut entry) in entry_set {
+
+                            let path = match entry.canon_path.take() {
+                                Some(c) => c,
+                                None => {
+                                    eprintln!("METAMISS");
+                                    try_continue!(entry.path().canonicalize(),"\tError: {} ({})",opts.path_disp(entry.path()))
+                                },
+                            };
+                            let meta = match entry.metadata.take() {
+                                Some(c) => c,
+                                None => {
+                                    eprintln!("METAMISS");
+                                    try_continue!(path.metadata(),"\tError: {} ({})",opts.path_disp(&path))
+                                },
+                            };
+
+                            size_file(&path, &meta, phy_off, &mut dest, &mut hash_now, &mut s, opts)?;
+                        }
+
+                        drop(s);
+
+                        //eprintln!("\tPreHash {}",hash_now.len());
+
+                        if opts.pass_1_hash {
+                            hash_files(
+                                hash_now.iter().cloned(),
+                                state,
+                                opts,
+                                true,
+                            )?;
+                        }
+
+                        hash_now.clear();
+                    }
+                }
+
+                let mut s = state.write().unwrap();
+
+                disp_enabled.store(false, Ordering::Release);
+
+                eprint!("\nSort...");
+                io::stdout().flush().unwrap();
+
+                dest.sort_by_key(|(o,_)| *o );
+
+                for (_,id) in &dest {
+                    if s.is_file_read_candidate(*id,opts) {
+                        s.tree[*id].disp_add_relevant();
+                    }
+                }
+
+                eprintln!(" Done");
+
+                disp_enabled.store(true, Ordering::Release);
+
+                self.entries = Some(dest);
+
+                Ok(())
+            },
+            Phase::Hash => {
+                assert!(self.entries.is_some());
+
+                hash_files(
+                    self.entries.clone().unwrap().iter().map(|(_,id)| *id ),
+                    state,
+                    opts,
+                    true,
+                )?;
+
+                
+                Ok(())
+            },
+            Phase::PostHash => {
+                assert!(self.entries.is_some());
+
+                hash_files(
+                    self.entries.take().unwrap().iter().map(|(_,id)| *id ),
+                    state,
+                    opts,
+                    false,
+                )?;
+                
+                Ok(())
+            }
+        }
+    }
+    fn new() -> Self {
+        Self{
+            entries: None,
+        }
+    }
+}
+
+pub fn size_file(path: &Path, meta: &Metadata, phy_off: u64, dest: &mut Vec<(u64,VfsId)>, hash_now: &mut Vec<VfsId>, s: &mut State, opts: &Opts) -> AnyhowResult<()> {
+    let size = meta.len();
+    let ctime = meta.ctime();
+
+    opts.log_verbosed("SIZE", &path);
+
+    disp_found_bytes.fetch_add(size as usize,Ordering::Relaxed);
+    disp_found_files.fetch_add(1,Ordering::Relaxed);
+
+    let id = s.tree.cid_and_create(&path);
+    s.validate(id,ctime,Some(size),None);
+
+    let e = &mut s.tree[id];
+    e.is_file = true;
+    
+    e.file_size = Some(size);
+    
+    s.push_to_size_group(id,true,false).unwrap();
+    if s.tree[id].file_hash.is_some() {
+        s.push_to_hash_group(id,true,false).unwrap();
+        //disp_processed_bytes.fetch_add(size as usize,Ordering::Relaxed);
+        //disp_processed_files.fetch_add(1,Ordering::Relaxed);
+    }
+
+    if s.is_file_read_candidate(id,opts) {
+        s.tree[id].disp_add_relevant();
+    }
+
+    dest.push((phy_off,id));
+    hash_now.push(id);
+    Ok(())
+}
+
+pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, opts: &'static Opts, do_zips: bool) -> AnyhowResult<()> {
+    #[derive(Clone)]
+    struct Reapion {
+        path: Arc<Path>,
+        id: VfsId,
+    }
+    impl AsRef<Path> for Reapion {
+        fn as_ref(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    let read_mutex = Mutex::new(());
+    let read_mutex = &read_mutex;
+
+    rayon::scope(move |pool| {
+        let filtered = i.filter_map(|id| {
+            let mut s = s.write().unwrap();
+            let do_hash = s.is_file_read_candidate(id,opts);
+            let e = &mut s.tree[id];
+            if do_hash {
+                e.disp_add_relevant();
+                assert!(e.valid);
+                Some(Reapion{
+                    path: e.path.clone(),
+                    id,
+                })
+            }else{
+                None
+            }
+        });
+
+        let mut reaper = MultiFileReadahead::new(filtered);
+
+        reaper.dropbehind(false);
+        reaper.budget(opts.prefetch_budget);
+
+        let huge_zip_thres = 256*1024*1024;
+        let alloc_thresh = 1024*1024*1024;
+
+        let mut buf = vec![0;opts.read_buffer];
+
+        let mut local_read_lock = None;
+
+        local_read_lock = Some(read_mutex.lock().unwrap());
+        //local_read_lock = None;
+
+        'big: loop {
+            match reaper.next() {
+                None => break,
+                Some(Err(e)) => {
+                    eprintln!("\tError {}",e);
+                }
+                Some(Ok(mut reader)) => {
+                    local_read_lock = None;
+                    let Reapion{path: p,id} = reader.data().clone(); 
+
+                    let size = reader.metadata().size();
+                    let ctime = reader.metadata().ctime();
+
+                    {
+                        let s = s.read().unwrap();
+                        if s.tree[id].file_size != Some(size) || s.tree[id].ctime != Some(ctime) {
+                            eprintln!("\tERROR: Skip comodified file: {}",opts.path_disp(&p));
+                            continue;
+                        }
+                    };
+
+                    opts.log_verbosed("HASH", &p);
+
+                    let mut hasher = Sha512::new();
+
+                    let mut reader = &mut reader;
+
+                    if do_zips && opts.zip_by_extension(&p) && size <= huge_zip_thres as u64 {
+                        let mut buf = AllocMonBuf::new(size as usize, alloc_thresh);
+
+                        let mut off = 0;
+                        local_read_lock = None;
+                        local_read_lock = Some(read_mutex.lock().unwrap());
+                        loop {
+                            match reader.read(&mut buf[off..(off+opts.read_buffer).min(size as usize)]) {
+                                Ok(0) => break,
+                                Ok(n) => {
+                                    hasher.write(&buf[off..off+n]).unwrap();
+                                    off+=n;
+                                    disp_processed_bytes.fetch_add(n,Ordering::Relaxed);
+                                },
+                                Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
+                                Err(e) if e.kind() == ErrorKind::Interrupted => {}
+                                Err(e) => {
+                                    eprintln!("\tFailed to read {}",e);
+                                    continue 'big;
+                                },
+                            }
+                        }
+                        local_read_lock = None;
+                        assert_eq!(off,size as usize);
+
+                        let p = p.clone();
+                        pool.spawn(move |_| {
+                            let buf: AllocMonBuf = buf;
+                            let r = try_return!(open_zip(Cursor::new(&buf[..size as usize])),"\tFailed to open ZIP: {} ({})",opts.path_disp(&p));
+                            try_return!(decode_zip(r,&p,s,opts),"\tFailed to read ZIP: {} ({})",opts.path_disp(&p));
+                        });
+                    }else{
+                        if do_zips && opts.zip_by_extension(&p) {
+                            disp_relevant_bytes.fetch_add(size as usize,Ordering::Relaxed);
+                            disp_relevant_files.fetch_add(1,Ordering::Relaxed);
+                            let p = p.clone();
+                            pool.spawn(move |_| {
+                                let (size,path) = {
+                                    let s = s.read().unwrap();
+                                    s.eventually_store_vfs(false);
+                                    let e = &s.tree[id];
+                                    ( e.file_size.unwrap(), e.path.clone() )
+                                };
+                                let reader = try_return!(File::open(&path),"\tFailed to open file for big zip read: {} ({})",opts.path_disp(&p));
+                                let reader = MutexedReader{inner: reader,mutex: &read_mutex};
+                                let reader = BufReader::with_capacity(64*1024*1024,reader);
+                        
+                                let r = try_return!(open_zip(reader),"\tFailed to open ZIP: {} ({})",opts.path_disp(&p));
+                                try_return!(decode_zip(r,&path,s,opts),"\tFailed to read ZIP: {} ({})",opts.path_disp(&p));
+                        
+                                disp_processed_bytes.fetch_add(size as usize,Ordering::Relaxed);
+                                disp_processed_files.fetch_add(1,Ordering::Relaxed);
+                            });
+                        }
+                        local_read_lock = None;
+                        local_read_lock = Some(read_mutex.lock().unwrap());
+                        loop {
+                            match reader.read(&mut buf[0..opts.read_buffer]) {
+                                Ok(0) => break,
+                                Ok(n) => {
+                                    hasher.write(&buf[..n]).unwrap();
+                                    disp_processed_bytes.fetch_add(n,Ordering::Relaxed);
+                                },
+                                Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
+                                Err(e) if e.kind() == ErrorKind::Interrupted => {}
+                                Err(e) => {
+                                    eprintln!("\tFailed to read {}",e);
+                                    continue 'big;
+                                },
+                            }
+                        }
+                        local_read_lock = None;
+                    }
+                    local_read_lock = None;
+
+                    let hash = hasher.result();
+
+                    let mut s = s.write().unwrap();
+
+                    let entry = &mut s.tree[id];
+
+                    entry.file_hash = Some(Arc::new(hash));
+
+                    if opts.zip_by_extension(&p) {
+                        entry.is_dir = true;
+                    }
+
+                    let size = entry.file_size.unwrap() as usize;
+
+                    s.push_to_hash_group(id,true,false).unwrap();
+
+                    //state.disp_pass_2_processed_bytes_capped += size.max(1024*1024);
+                    disp_processed_files.fetch_add(1,Ordering::Relaxed);
+
+                    s.eventually_store_vfs(false);
+
+                    local_read_lock = None;
+                    local_read_lock = Some(read_mutex.lock().unwrap());
+                }
+            }
+        }
+        local_read_lock = None;
+        Ok(())
+    })
+}
+
+#[macro_export]
+macro_rules! try_continue {
+    ($oof:expr,$fmt:expr,$($args:tt)*) => {
+        match $oof {
+            Ok(f) => {
+                f
+            },
+            Err(e) => {
+                eprintln!($fmt,e,$($args)*);
+                continue
+            },
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! try_return {
+    ($oof:expr,$fmt:expr,$($args:tt)*) => {
+        match $oof {
+            Ok(f) => {
+                f
+            },
+            Err(e) => {
+                eprintln!($fmt,e,$($args)*);
+                return
+            },
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! soft_error {
+    ($oof:expr,$fmt:expr,$($args:tt)*) => {
+        match $oof {
+            Ok(f) => {
+                Some(f)
+            },
+            Err(e) => {
+                eprintln!($fmt,e,$($args)*);
+                None
+            },
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! try_returnerr {
+    ($oof:expr,$fmt:expr,$($args:tt)*) => {
+        match $oof {
+            Ok(f) => {
+                f
+            },
+            Err(e) => {
+                eprintln!($fmt,e,$($args)*);
+                return Err(e.into())
+            },
+        }
+    };
+}

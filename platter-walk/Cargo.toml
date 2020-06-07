@@ -1,0 +1,23 @@
+[package]
+name = "platter-walk"
+version = "0.1.2"
+authors = ["The 8472"]
+description = "Directory tree traversal optimized for HDDs"
+keywords = ["linux", "ext4"]
+repository = "https://github.com/the8472/platter-walk"
+readme = "README.md"
+categories = ["filesystem"]
+license = "MPL-2.0"
+
+include = [
+    "**/*.rs",
+    "README.md",
+    "LICENCE",
+    "Cargo.toml",
+]
+
+
+[dependencies]
+btrfs2 = "1.2.2"
+mnt = "0.3.1"
+libc = "0.2.70"
