@@ -330,7 +330,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                     }
                     local_read_lock = None;
 
-                    let hash = hasher.result();
+                    let hash = hasher.finalize();
 
                     let mut s = s.write().unwrap();
 

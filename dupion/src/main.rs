@@ -128,18 +128,18 @@ pub fn print_stat() {
 #[derive(StructOpt)]
 #[structopt(name = "dedupion", about = "Find duplicate files and folders")]
 pub struct OptInput {
-    #[structopt(long,default_value="1.0",help="read buffer in MiB, has no effect")]
+    #[structopt(long,default_value="1.0",help="EXPERIMENTAL read buffer in MiB")]
     pub read_buffer: f64,
-    #[structopt(long,default_value="16.0",help="prefetch budget in MiB")]
+    #[structopt(long,default_value="16.0",help="EXPERIMENTAL prefetch budget in MiB")]
     pub prefetch_budget: f64,
-    #[structopt(long,default_value="1024.0",help="TODO in MiB")]
+    #[structopt(long,default_value="1024.0",help="threaded archive read cache limit in MiB")]
     pub archive_cache_mem: f64,
-    #[structopt(short,long,default_value="2",help="show shadowed files/directory (shadowed are e.g. childs of duplicate dirs) (0-3)")]
+    #[structopt(short,long,default_value="2",help="show shadowed files/directory (shadowed are e.g. childs of duplicate dirs) (0-3)\n0: show ALL, including pure shadowed groups\n1: show all except pure shadowed groups\n2: show shadowed only if there is also one non-shadowed in the group\n3: never show shadowed\n")]
     pub shadow_rule: u8,
 
     #[structopt(short,long,help="spam stderr")]
     pub verbose: bool,
-    #[structopt(short,long,help="force to display paths absolute")]
+    #[structopt(long,help="force to display paths absolute")]
     pub absolute_path: bool,
     #[structopt(long,help="Enable hashing in 1st pass. Can affect performance positively or negatively")]
     pub pass_1_hash: bool,
@@ -147,7 +147,7 @@ pub struct OptInput {
     pub no_cache: bool,
     #[structopt(long,help="abort after pass 1")]
     pub bench_pass_1: bool,
-    #[structopt(short="p",long,help="prefetch directory metadata. recommended to use, but eventually fails on non-root")]
+    #[structopt(long,help="EXPERIMENTAL prefetch directory metadata, eventually fails on non-root")]
     pub dir_prefetch: bool,
     #[structopt(short="a",long,help="also search inside archives. requires to scan and hash every archive")]
     pub read_archives: bool,

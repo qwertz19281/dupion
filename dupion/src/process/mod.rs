@@ -141,7 +141,7 @@ pub fn calculate_dir_hash(state: &mut State, id: VfsId) -> Result<(Size,Hash),()
         hasher.write(&**h).unwrap();
     }
 
-    let hash = Arc::new(hasher.result());
+    let hash = Arc::new(hasher.finalize());
 
     //eprintln!("Hashed Dir {}",state.tree[id].path.to_string_lossy());
     //eprintln!("{} {}",size,encode_hash(&hash));

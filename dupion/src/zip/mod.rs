@@ -46,7 +46,7 @@ pub fn decode_zip<'r,R>(mut ar: R, zip_path: &Path, state: &'static RwLock<State
                         //continue;
                     }
 
-                    let hash = Arc::new(hasher.result());
+                    let hash = Arc::new(hasher.finalize());
 
                     let path = zip_path.join(name);
 
