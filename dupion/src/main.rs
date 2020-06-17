@@ -1,4 +1,4 @@
-use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{printion, export, calculate_dir_hash, find_shadowed}, util::*, vfs::VfsId, zip::setlocale_hack};
+use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{printion, export, calculate_dir_hash, find_shadowed, treestat::printion_tree, treediff::printion_treediff}, util::*, vfs::VfsId, zip::setlocale_hack};
 use std::{time::Duration, sync::{atomic::Ordering, RwLock}, path::PathBuf};
 use size_format::SizeFormatterBinary;
 use structopt::*;
@@ -9,7 +9,7 @@ fn main() {
     let o = OptInput::from_args();
 
     let opts = Box::leak(Box::new(Opts{
-        paths: o.dirs,
+        paths: o.dirs.clone(),
         verbose: o.verbose,
         shadow_rule: o.shadow_rule,
         force_absolute_paths: o.absolute_path,
@@ -25,7 +25,9 @@ fn main() {
         opts.paths = vec![std::env::current_dir().unwrap()];
     }
 
-    opts.validate().unwrap();
+    if !o.no_scan {
+        opts.validate().unwrap();
+    }
 
     let state = Box::leak(Box::new(RwLock::new(State::new(!o.no_cache))));
 
@@ -33,6 +35,35 @@ fn main() {
         state.write().unwrap().eventually_load_vfs();
     }
 
+    if !o.no_scan {
+        scan(&o, opts, state);
+    }else{
+        dirty_load(&o, opts, state);
+    }
+
+    let mut state = state.write().unwrap();
+
+    eprintln!("\n\n#### Calculate");
+    
+    assert!(!state.tree.entries.is_empty(),"No Duplicates found");
+
+    let _ = calculate_dir_hash(&mut state,VfsId::ROOT);
+    find_shadowed(&mut state,VfsId::ROOT);
+
+    eprintln!("#### Sort");
+
+    let sorted = export(&mut state);
+
+    eprintln!("#### Result");
+
+    if !o.print_structson {
+        printion(&sorted, &state, &opts);
+    }else{
+        printion_treediff(&mut state, &opts);
+    }
+}
+
+pub fn scan(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
     let mut d = PlatterWalker::new();
 
     eprintln!("\n#### Pass 1\n");
@@ -61,22 +92,19 @@ fn main() {
     print_stat();
 
     let mut state = state.write().unwrap();
+
+    //state.clean_old_validations(VfsId::ROOT);
+
     state.eventually_store_vfs(true);
+}
 
-    eprintln!("\n\n#### Calculate");
-    
-    assert!(!state.tree.entries.is_empty(),"No Duplicates found");
+pub fn dirty_load(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
+    let mut state = state.write().unwrap();
 
-    let _ = calculate_dir_hash(&mut state,VfsId::ROOT);
-    find_shadowed(&mut state,VfsId::ROOT);
-
-    eprintln!("#### Sort");
-
-    let sorted = export(&state);
-
-    eprintln!("#### Result");
-
-    printion(&sorted, &state, &opts);
+    for root in &opts.paths {
+        let id = state.tree.cid_and_create(root);
+        state.set_valid(id);
+    }
 }
 
 pub fn spawn_info_thread(o: &Opts) {
@@ -151,6 +179,10 @@ pub struct OptInput {
     pub dir_prefetch: bool,
     #[structopt(short="a",long,help="also search inside archives. requires to scan and hash every archive")]
     pub read_archives: bool,
+    #[structopt(long,help="EXPERIMENTAL")]
+    pub no_scan: bool,
+    #[structopt(long,help="EXPERIMENTAL")]
+    pub print_structson: bool,
 
     #[structopt(parse(from_os_str),help="directories to scan. cwd if none given")]
     pub dirs: Vec<PathBuf>,

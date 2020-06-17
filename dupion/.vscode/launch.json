@@ -7,16 +7,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'dedupion2'",
+            "name": "Debug unit tests in library 'dupion'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
                     "--lib",
-                    "--package=dedupion2"
+                    "--package=dupion"
                 ],
                 "filter": {
-                    "name": "dedupion2",
+                    "name": "dupion",
                     "kind": "lib"
                 }
             },
@@ -26,15 +26,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'dedupion2'",
+            "name": "Debug executable 'dupion'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=dedupion2",
-                    "--package=dedupion2"
+                    "--bin=dupion",
+                    "--package=dupion"
                 ],
                 "filter": {
-                    "name": "dedupion2",
+                    "name": "dupion",
                     "kind": "bin"
                 }
             },
@@ -44,16 +44,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'dedupion2'",
+            "name": "Debug unit tests in executable 'dupion'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=dedupion2",
-                    "--package=dedupion2"
+                    "--bin=dupion",
+                    "--package=dupion"
                 ],
                 "filter": {
-                    "name": "dedupion2",
+                    "name": "dupion",
                     "kind": "bin"
                 }
             },

@@ -119,6 +119,8 @@ impl Vfs {
             dir_shadowed: false,
             unique: false,
             disp_relevated: false,
+            failure: None,
+            treediff_stat: 0,
         });
         senf
     }

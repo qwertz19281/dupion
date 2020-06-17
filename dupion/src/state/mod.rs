@@ -101,8 +101,11 @@ impl State {
         do_hash
     }
     pub fn more_than_one_hash(&self, hash: &Hash) -> bool {
+        self.num_hashes(hash) > 1
+    }
+    pub fn num_hashes(&self, hash: &Hash) -> usize {
         self.hashes.get(hash)
-            .map_or(false, |e| e.entries.len() > 1)
+            .map_or(0, |e| e.entries.len() )
     }
     pub fn new(cache_allowed: bool) -> Self {
         Self{

@@ -8,16 +8,20 @@ use util::{Hash, Size};
 use sha2::{Digest, Sha512};
 use std::{sync::Arc, io::Write, cmp::Reverse};
 
-pub fn export(b: &State) -> Vec<HashGroup> {
+pub mod treestat;
+pub mod treediff;
+
+pub fn export(b: &mut State) -> Vec<HashGroup> {
+    let tree = &mut b.tree;
+    for e in b.hashes.values_mut() {
+        e.entries.sort_by_key(|(t,id)| 
+            (t.order(),tree[*id].path.clone())
+        );
+    }
+
     let mut v = b.hashes.values()
         .cloned()
         .collect::<Vec<_>>();
-
-    for e in &mut v {
-        e.entries.sort_by_key(|(t,id)| 
-            (t.order(),b.tree[*id].path.clone())
-        );
-    }
 
     v.sort_by_key(|e| {
         let (fd_order,name) = 
@@ -73,15 +77,11 @@ pub fn printion(v: &[HashGroup], b: &State, opts: &Opts) {
 
             if !hide_shadowed || !e.shadowed(*t) {
                 assert_eq!(e.size(*t).unwrap(),h.size);
-                let tt = match t {
-                    VfsEntryType::File if e.is_dir => "A",
-                    VfsEntryType::File => "F",
-                    VfsEntryType::Dir => "D",
-                };
+                let tt = t.icon2(e.is_dir);
                 println!(
                     "   {}{} {}",
                     tt,
-                    if e.shadowed(*t) {"S"} else {" "},
+                    if e.shadowed(*t) {'S'} else {' '},
                     opts.path_disp(&e.path)
                 );
             }

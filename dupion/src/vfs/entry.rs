@@ -23,6 +23,8 @@ pub struct VfsEntry {
     pub dir_shadowed: bool,
     pub unique: bool,
     pub disp_relevated: bool,
+    pub failure: Option<u64>,
+    pub treediff_stat: u8,
 }
 
 impl VfsEntry {
@@ -44,6 +46,8 @@ impl VfsEntry {
             dir_shadowed: false,
             unique: false,
             disp_relevated: false,
+            failure: None,
+            treediff_stat: 0,
         }
     }
 
@@ -79,7 +83,7 @@ impl VfsEntry {
         //let e = self.path.to_string_lossy().as_ref();
         //assert_eq!(self.dir_size.is_some(),self.dir_hash.is_some());
         //assert_eq!(self.file_size.is_some(),self.file_hash.is_some());
-        if self.file_size.is_some() {
+        if self.is_file { //TODO FIX unverified change from self.file_size.is_some()
             self.file_props()
         }else{
             self.dir_props()
@@ -95,6 +99,23 @@ impl VfsEntry {
     pub fn exists(&self) -> bool {
         self.is_file || self.is_dir
     }
+
+    pub fn icon3(&self) -> char {
+        match (self.is_dir,self.is_file) {
+            (true,true) => 'A',
+            (false,true) => 'F',
+            (true,false) => 'D',
+            (false,false) => 'X',
+        }
+    }
+    pub fn icon_prio2(&self) -> u32 {
+        match (self.is_dir,self.is_file) {
+            (true,true) => 1,
+            (false,true) => 2,
+            (true,false) => 0,
+            (false,false) => 3,
+        }
+    }
 }
 
 #[derive(PartialEq,Clone,Copy,Debug)]
@@ -106,8 +127,22 @@ pub enum VfsEntryType {
 impl VfsEntryType {
     pub fn order(&self) -> u8 {
         match self {
-            VfsEntryType::File => 2,
-            VfsEntryType::Dir => 1,
+            Self::File => 2,
+            Self::Dir => 1,
+        }
+    }
+
+    pub fn icon2(&self, is_dir: bool) -> char {
+        match self {
+            Self::File if is_dir => 'A',
+            Self::File => 'F',
+            Self::Dir => 'D',
+        }
+    }
+    pub fn icon(&self) -> char {
+        match self {
+            Self::File => 'F',
+            Self::Dir => 'D',
         }
     }
 }
@@ -135,21 +170,7 @@ impl State {
         }
         if valid { //TODO also validate size
             //valid, recursive validate
-            self.for_recursive2(id, true, |s,id| {
-                s.tree[id].valid = true;
-                s.tree[id].is_file |= s.tree[id].was_file;
-                s.tree[id].is_dir |= s.tree[id].was_dir;
-
-                if s.tree[id].is_file {
-                    if s.tree[id].file_size.is_some() {
-                        s.push_to_size_group(id,true,false).unwrap();
-                    }
-                    if s.tree[id].file_hash.is_some() {
-                        s.push_to_hash_group(id,true,false).unwrap();
-                    }
-                }
-            });
-            true
+            self.set_valid(id)
         }else{
             let s = &mut self.tree[id];
             //eprintln!("MISS {}",s.path.to_string_lossy());
@@ -162,6 +183,33 @@ impl State {
             false
         }
     }
+
+    pub fn set_valid(&mut self, id: VfsId) -> bool {
+        //assert!(self.tree[id].is_file);
+        self.for_recursive2(id, true, |s,id| {
+            s.tree[id].valid = true;
+            s.tree[id].is_file |= s.tree[id].was_file;
+            s.tree[id].is_dir |= s.tree[id].was_dir;
+
+            if s.tree[id].is_file {
+                if s.tree[id].file_size.is_some() {
+                    s.push_to_size_group(id,true,false).unwrap();
+                }
+                if s.tree[id].file_hash.is_some() {
+                    s.push_to_hash_group(id,true,false).unwrap();
+                }
+            }
+        });
+        true
+    }
+
+    /*pub fn clean_old_validations(&mut self, id: VfsId) -> bool {
+        self.for_recursive2(id, true, |s,id| {
+            s.tree[id].was_file = false;
+            s.tree[id].was_dir = false;
+        });
+        true
+    }*/
     
     pub fn for_recursive2(&mut self, id: VfsId, with_root: bool, f: fn(&mut Self,VfsId)) {
         if with_root {

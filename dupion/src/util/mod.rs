@@ -29,20 +29,28 @@ pub struct MutexedReader<'m,R> {
 
 impl<'m,R> Read for MutexedReader<'m,R> where R: Read {
     fn read_vectored(&mut self, bufs: &mut [std::io::IoSliceMut<'_>]) -> std::io::Result<usize> {
-        let _ = self.mutex.lock().unwrap();
-        self.inner.read_vectored(bufs)
+        let x = self.mutex.lock().unwrap();
+        let r = self.inner.read_vectored(bufs);
+        drop(x);
+        r
     }
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> std::io::Result<usize> {
-        let _ = self.mutex.lock().unwrap();
-        self.inner.read_to_end(buf)
+        let x = self.mutex.lock().unwrap();
+        let r = self.inner.read_to_end(buf);
+        drop(x);
+        r
     }
     fn read_to_string(&mut self, buf: &mut String) -> std::io::Result<usize> {
-        let _ = self.mutex.lock().unwrap();
-        self.inner.read_to_string(buf)
+        let x = self.mutex.lock().unwrap();
+        let r = self.inner.read_to_string(buf);
+        drop(x);
+        r
     }
     fn read_exact(&mut self, buf: &mut [u8]) -> std::io::Result<()> {
-        let _ = self.mutex.lock().unwrap();
-        self.inner.read_exact(buf)
+        let x = self.mutex.lock().unwrap();
+        let r = self.inner.read_exact(buf);
+        drop(x);
+        r
     }
     fn bytes(self) -> std::io::Bytes<Self>
     where
@@ -63,8 +71,10 @@ impl<'m,R> Read for MutexedReader<'m,R> where R: Read {
         panic!()
     }
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let _ = self.mutex.lock().unwrap();
-        self.inner.read(buf)
+        let x = self.mutex.lock().unwrap();
+        let r = self.inner.read(buf);
+        drop(x);
+        r
     }
 
 }

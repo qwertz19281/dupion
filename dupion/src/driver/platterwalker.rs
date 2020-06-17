@@ -31,7 +31,7 @@ impl Driver for PlatterWalker {
 
                 for root in &opts.paths {
                     if root.is_dir() {
-                        try_returnerr!(scan.add_root(root.clone()),"\tError addding root: {} ({})",opts.path_disp(&root));
+                        try_returnerr!(scan.add_root(root.clone()),"\tError adding root: {} ({})",opts.path_disp(&root));
                     } else if root.is_file() {
                         size_file(
                             root,
@@ -235,7 +235,6 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                     eprintln!("\tError {}",e);
                 }
                 Some(Ok(mut reader)) => {
-                    local_read_lock = None;
                     let Reapion{path: p,id} = reader.data().clone(); 
 
                     let size = reader.metadata().size();
@@ -255,7 +254,9 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
 
                     let mut reader = &mut reader;
 
-                    if do_zips && opts.zip_by_extension(&p) && size <= huge_zip_thres as u64 {
+                    if do_zips && opts.zip_by_extension(&p) && size <= huge_zip_thres {
+                        local_read_lock = None;
+
                         let mut buf = AllocMonBuf::new(size as usize, alloc_thresh);
 
                         let mut off = 0;
@@ -283,7 +284,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                         let p = p.clone();
                         pool.spawn(move |_| {
                             let buf: AllocMonBuf = buf;
-                            let r = try_return!(open_zip(Cursor::new(&buf[..size as usize])),"\tFailed to open ZIP: {} ({})",opts.path_disp(&p));
+                            let r = try_return!(open_zip(Cursor::new(&buf[..size as usize]),&p,s,opts),"\tFailed to open ZIP: {} ({})",opts.path_disp(&p));
                             try_return!(decode_zip(r,&p,s,opts),"\tFailed to read ZIP: {} ({})",opts.path_disp(&p));
                         });
                     }else{
@@ -302,15 +303,13 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                                 let reader = MutexedReader{inner: reader,mutex: &read_mutex};
                                 let reader = BufReader::with_capacity(64*1024*1024,reader);
                         
-                                let r = try_return!(open_zip(reader),"\tFailed to open ZIP: {} ({})",opts.path_disp(&p));
+                                let r = try_return!(open_zip(reader,&path,s,opts),"\tFailed to open ZIP: {} ({})",opts.path_disp(&p));
                                 try_return!(decode_zip(r,&path,s,opts),"\tFailed to read ZIP: {} ({})",opts.path_disp(&p));
                         
                                 disp_processed_bytes.fetch_add(size as usize,Ordering::Relaxed);
                                 disp_processed_files.fetch_add(1,Ordering::Relaxed);
                             });
                         }
-                        local_read_lock = None;
-                        local_read_lock = Some(read_mutex.lock().unwrap());
                         loop {
                             match reader.read(&mut buf[0..opts.read_buffer]) {
                                 Ok(0) => break,

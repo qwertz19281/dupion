@@ -2,10 +2,11 @@ use super::*;
 
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde_derive::*;
-use std::{io::Cursor, sync::atomic::Ordering};
+use std::{io::Cursor, sync::atomic::Ordering, collections::HashSet};
 use sha2::digest::generic_array::GenericArray;
 use state::State;
 use util::{vfs_store_notif, Hash, Size};
+use std::cell::RefCell;
 
 #[derive(Serialize,Deserialize)]
 struct EntryIndermediate {
@@ -16,6 +17,8 @@ struct EntryIndermediate {
     childs: Vec<VfsId>,
     was_file: bool,
     was_dir: bool,
+    #[serde(default)] 
+    upgrade: Option<u64>,
 }
 
 impl Serialize for VfsEntry {
@@ -29,8 +32,9 @@ impl Serialize for VfsEntry {
             file_size: self.file_size,
             file_hash: self.file_hash.as_ref().map(encode_hash),
             childs: self.childs.clone(),
-            was_file: self.is_file,
-            was_dir: self.is_dir,
+            was_file: self.is_file || (self.was_file && !self.valid),
+            was_dir: self.is_dir || (self.was_dir && !self.valid),
+            upgrade: self.failure,
         };
         i.serialize(serializer)
     }
@@ -59,6 +63,8 @@ impl<'de> Deserialize<'de> for VfsEntry {
                 dir_shadowed: false,
                 unique: false,
                 disp_relevated: false,
+                failure: i.upgrade,
+                treediff_stat: 0,
             })
     }
 }
@@ -79,6 +85,7 @@ impl State {
                 let buf = tryz!(std::fs::read(&path));
                 let entries: Vec<VfsEntry> = tryz!(serde_json::from_reader(Cursor::new(buf)));
                 self.tree.entries = entries;
+                DEDUP.with(|z| *z.borrow_mut() = HashSet::new() );
             }
         }
     }
@@ -88,9 +95,22 @@ pub fn encode_hash(h: &Hash) -> String {
     base64::encode(&***h)
 }
 
+thread_local! {
+    pub static DEDUP: RefCell<HashSet<Hash>> = RefCell::new(HashSet::new());
+}
+
 pub fn decode_hash(h: &str) -> Hash {
     let decoded = base64::decode(h).unwrap();
-    Arc::new( GenericArray::clone_from_slice(&decoded) )
+    let arc = Arc::new( GenericArray::clone_from_slice(&decoded) );
+    DEDUP.with(move |z| { 
+        let mut z = z.borrow_mut();
+        if let Some(v) = z.get(&arc) {
+            v.clone()
+        }else{
+            z.insert(arc.clone());
+            arc
+        }
+    })
 }
 
 #[macro_export]
