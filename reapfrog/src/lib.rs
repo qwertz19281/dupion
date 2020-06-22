@@ -161,29 +161,33 @@ impl<Src: Iterator<Item=U>,U> MultiFileReadahead<Src,U> where U: AsRef<Path> {
     }
 
     fn add_file(&mut self) -> bool {
-        match self.source.next() {
-            None => false,
-            Some(p) => {
-                let f = match File::open(&p) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        self.open.push_back(Err(e));
-                        return false
-                    }
-                };
+        let mut read = false;
+        for _ in 0..MAX_OPEN/4 {
+            match self.source.next() {
+                None => break,
+                Some(p) => {
+                    let f = match File::open(&p) {
+                        Ok(f) => f,
+                        Err(e) => {
+                            self.open.push_back(Err(e));
+                            continue;
+                        }
+                    };
 
-                let len = match f.metadata() {
-                    Ok(m) => m.len(),
-                    Err(e) => {
-                        self.open.push_back(Err(e));
-                        return false
-                    }
-                };
+                    let len = match f.metadata() {
+                        Ok(m) => m.len(),
+                        Err(e) => {
+                            self.open.push_back(Err(e));
+                            continue;
+                        }
+                    };
 
-                self.open.push_back(Ok(Prefetch::new(f, len, p)));
-                true
+                    self.open.push_back(Ok(Prefetch::new(f, len, p)));
+                    read=true;
+                }
             }
         }
+        read
     }
 
     pub fn next(&mut self) -> Option<Result<Reader<Src,U>, std::io::Error>> {

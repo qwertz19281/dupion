@@ -238,16 +238,11 @@ impl<D> ToScan<D> where D: Default {
 
                 let mount = self.mountpoints.iter().rev().find(|mnt| e.path().starts_with(&mnt.file));
 
-                /*if let Some(m) = &mount {
-                    eprintln!("MountFSion {} {}",m.vfstype,m.spec);
-                }*/
-
                 // TODO: only try to open devices once
                 match mount {
                     Some(&mnt::MountEntry {ref spec, ref vfstype, ..})
-                    if vfstype == "ext4" || vfstype == "ext3" || vfstype == "btrfs"
+                    if vfstype == "ext4" || vfstype == "ext3"// || vfstype == "btrfs"
                     => {
-                        //eprintln!("E");
                         let mount_slot = device_groups.entry(spec).or_insert(vec![]);
                         mount_slot.extend(&e.extents);
                     }
@@ -412,7 +407,7 @@ impl<D> Iterator for ToScan<D> where D: Default {
                             Ok(ref extents) if !extents.is_empty() => extents[0].physical,
                             _ => 0
                         };
-                        //The metadata should now be cached by the os, so file size read shouln't be slow
+                        //The metadata should now be cached by the OS, so file size read shouldn't be slow
                         if e.ftype.is_file() {
                             if let Ok(meta) = std::fs::metadata(e.path()) {
                                 e.metadata = Some(meta);
