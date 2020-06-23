@@ -27,15 +27,16 @@ struct Prefetch<U> {
     read_pos: u64,
     prefetch_pos: u64,
     to_drop: u64,
-    length: u64
+    length: u64,
+    metadata: Metadata,
 }
 
 impl<U> Prefetch<U> {
-    fn new(f: File, len: u64, p: U) -> Self {
+    fn new(f: File, metadata: Metadata, len: u64, p: U) -> Self {
         unsafe {
             libc::posix_fadvise(f.as_raw_fd(), 0, 0, libc::POSIX_FADV_SEQUENTIAL);
         }
-        Prefetch{f, read_pos: 0, length: len, p, to_drop: 0, prefetch_pos: 0}
+        Prefetch{f, read_pos: 0, length: len, p, to_drop: 0, prefetch_pos: 0, metadata}
     }
 }
 
@@ -53,8 +54,8 @@ pub struct Reader<'a, T: 'a, U: 'a> {
 
 impl<'a, T, U> Reader<'a, T, U> where T: Iterator<Item=U>, U: AsRef<Path> {
 
-    pub fn metadata(&self) -> Metadata {
-        self.owner.open[0].as_ref().expect("expect that readers are only created for successfully opened files").f.metadata().unwrap()
+    pub fn metadata(&self) -> &Metadata {
+        &self.owner.open[0].as_ref().expect("expect that readers are only created for successfully opened files").metadata
     }
 
     pub fn data(&self) -> &U {
@@ -174,15 +175,17 @@ impl<Src: Iterator<Item=U>,U> MultiFileReadahead<Src,U> where U: AsRef<Path> {
                         }
                     };
 
-                    let len = match f.metadata() {
-                        Ok(m) => m.len(),
+                    let meta = match f.metadata() {
+                        Ok(m) => m,
                         Err(e) => {
                             self.open.push_back(Err(e));
                             continue;
                         }
                     };
 
-                    self.open.push_back(Ok(Prefetch::new(f, len, p)));
+                    let len = meta.len();
+
+                    self.open.push_back(Ok(Prefetch::new(f, meta, len, p)));
                     read=true;
                 }
             }
