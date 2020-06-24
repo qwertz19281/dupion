@@ -1,6 +1,7 @@
 use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{printion, export, calculate_dir_hash, find_shadowed, treestat::printion_tree, treediff::printion_treediff}, util::*, vfs::VfsId, zip::setlocale_hack};
-use std::{time::Duration, sync::{atomic::Ordering, RwLock}, path::PathBuf};
+use std::{time::Duration, sync::{atomic::Ordering}, path::PathBuf};
 use size_format::SizeFormatterBinary;
+use parking_lot::RwLock;
 use structopt::*;
 
 fn main() {
@@ -19,10 +20,15 @@ fn main() {
         archive_cache_mem: ((o.archive_cache_mem * 1048576.0) as usize +1024)/4096*4096,
         dir_prefetch: o.dir_prefetch,
         read_archives: o.read_archives,
+        //huge_zip_thres: ((o.huge_zip_thres * 1048576.0) as usize +1024)/4096*4096,
+        threads: o.threads,
     }));
 
     if opts.paths.is_empty() {
         opts.paths = vec![std::env::current_dir().unwrap()];
+    }
+    if opts.threads == 0 {
+        opts.threads = get_threads();
     }
 
     if !o.no_scan {
@@ -32,7 +38,7 @@ fn main() {
     let state = Box::leak(Box::new(RwLock::new(State::new(!o.no_cache))));
 
     if !o.bench_pass_1 {
-        state.write().unwrap().eventually_load_vfs();
+        state.write().eventually_load_vfs();
     }
 
     if !o.no_scan {
@@ -41,7 +47,7 @@ fn main() {
         dirty_load(&o, opts, state);
     }
 
-    let mut state = state.write().unwrap();
+    let mut state = state.write();
 
     eprintln!("\n\n#### Calculate");
     
@@ -91,7 +97,7 @@ pub fn scan(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
     disp_enabled.store(false, Ordering::Release);
     print_stat();
 
-    let mut state = state.write().unwrap();
+    let mut state = state.write();
 
     //state.clean_old_validations(VfsId::ROOT);
 
@@ -99,7 +105,7 @@ pub fn scan(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
 }
 
 pub fn dirty_load(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
-    let mut state = state.write().unwrap();
+    let mut state = state.write();
 
     for root in &opts.paths {
         let id = state.tree.cid_and_create(root);
@@ -153,6 +159,26 @@ pub fn print_stat() {
     );
 }
 
+pub fn get_threads() -> usize {
+    match std::env::var("RAYON_NUM_THREADS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+    {
+        Some(x) if x > 0 => return x,
+        Some(x) if x == 0 => return num_cpus::get(),
+        _ => {}
+    }
+
+    // Support for deprecated `RAYON_RS_NUM_CPUS`.
+    match std::env::var("RAYON_RS_NUM_CPUS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+    {
+        Some(x) if x > 0 => x,
+        _ => num_cpus::get(),
+    }
+}
+
 #[derive(StructOpt)]
 #[structopt(name = "dedupion", about = "Find duplicate files and folders")]
 pub struct OptInput {
@@ -162,6 +188,8 @@ pub struct OptInput {
     pub prefetch_budget: f64,
     #[structopt(long,default_value="1024.0",help="threaded archive read cache limit in MiB")]
     pub archive_cache_mem: f64,
+    #[structopt(short,long,default_value="0",help="number of threads for zip decoding, 0 = num_cpu logical count")]
+    pub threads: usize,
     #[structopt(short,long,default_value="2",help="show shadowed files/directory (shadowed are e.g. childs of duplicate dirs) (0-3)\n0: show ALL, including pure shadowed groups\n1: show all except pure shadowed groups\n2: show shadowed only if there is also one non-shadowed in the group\n3: never show shadowed\n")]
     pub shadow_rule: u8,
 

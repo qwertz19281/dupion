@@ -10,3 +10,12 @@ members = [
 [profile.release]
 codegen-units = 1
 lto = true
+
+[profile.release.package.proc-macro2]
+opt-level = 0
+[profile.release.package.quote]
+opt-level = 0
+[profile.release.package.syn]
+opt-level = 0
+[profile.release.package.serde_derive]
+opt-level = 0

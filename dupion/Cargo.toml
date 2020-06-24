@@ -18,6 +18,8 @@ serde = "1.0"
 serde_derive = "1.0"
 base64 = "0.12"
 libc = "0.2.71"
+parking_lot = "0.11"
+num_cpus = "1.13"
 
 [dependencies.platter-walk]
 path = "../platter-walk"
@@ -27,9 +29,5 @@ path = "../reapfrog"
 
 [dependencies.libarchive]
 path = "../libarchive-rust"
-
-[profile.release]
-codegen-units = 1
-lto = true
 
 #TODO optimize compile times by e.g. opt=0 for derive deps

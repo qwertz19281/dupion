@@ -1,8 +1,8 @@
 use super::*;
-use std::sync::RwLock;
 use state::State;
 use opts::Opts;
 use phase::Phase;
+use parking_lot::RwLock;
 
 pub mod platterwalker;
 

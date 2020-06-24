@@ -5,10 +5,11 @@ use platter_walk::{Order, ToScan};
 use vfs::VfsId;
 use reapfrog::MultiFileReadahead;
 use sha2::{Digest, Sha512};
-use std::{sync::{atomic::Ordering, Arc, Mutex}, io::{Read, Write, self}, fs::{Metadata, File}};
+use std::{sync::{atomic::Ordering, Arc}, io::{Read, Write, self}, fs::{Metadata, File}};
 use util::*;
 use zip::{open_zip, decode_zip};
 use io::{BufReader, Cursor};
+use parking_lot::Mutex;
 
 pub struct PlatterWalker {
     pub entries: Option<Vec<(u64,VfsId)>>,
@@ -39,7 +40,7 @@ impl Driver for PlatterWalker {
                             0,
                             &mut dest,
                             &mut hash_now,
-                            &mut state.write().unwrap(), opts
+                            &mut state.write(), opts
                         )?;
                     }
                 }
@@ -51,7 +52,7 @@ impl Driver for PlatterWalker {
                 
 
                 for entry_set in scan {
-                    let mut s = state.write().unwrap();
+                    let mut s = state.write();
 
                     if let Some(entry_set) = soft_error!(entry_set,"\tError: {}",) {
                         for (phy_off, mut entry) in entry_set {
@@ -91,7 +92,7 @@ impl Driver for PlatterWalker {
                     }
                 }
 
-                let mut s = state.write().unwrap();
+                let mut s = state.write();
 
                 disp_enabled.store(false, Ordering::Release);
 
@@ -193,12 +194,17 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
         }
     }
 
-    let read_mutex = Mutex::new(());
+    let read_mutex = ZeroLock::new(true);
     let read_mutex = &read_mutex;
 
-    rayon::scope(move |pool| {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(opts.threads)
+        .build()
+        .unwrap();
+
+    pool.scope(move |pool| {
         let filtered = i.filter_map(|id| {
-            let mut s = s.write().unwrap();
+            let mut s = s.write();
             let do_hash = s.is_file_read_candidate(id,opts);
             let e = &mut s.tree[id];
             if do_hash {
@@ -218,14 +224,14 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
         reaper.dropbehind(false);
         reaper.budget(opts.prefetch_budget);
 
-        let huge_zip_thres = 256*1024*1024;
-        let alloc_thresh = 1024*1024*1024;
+        //let huge_zip_thres = 256*1024*1024;
+        let huge_zip_thres = opts.archive_cache_mem as u64 / opts.threads as u64;
 
         let mut buf = vec![0;opts.read_buffer];
 
-        let mut local_read_lock = None;
+        let mut local_read_lock = read_mutex.clone();
 
-        local_read_lock = Some(read_mutex.lock().unwrap());
+        local_read_lock.lock();
         //local_read_lock = None;
 
         'big: loop {
@@ -241,7 +247,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                     let ctime = reader.metadata().ctime();
 
                     {
-                        let s = s.read().unwrap();
+                        let s = s.read();
                         if s.tree[id].file_size != Some(size) || s.tree[id].ctime != Some(ctime) {
                             eprintln!("\tERROR: Skip comodified file: {}",opts.path_disp(&p));
                             continue;
@@ -255,13 +261,10 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                     let mut reader = &mut reader;
 
                     if do_zips && opts.zip_by_extension(&p) && size <= huge_zip_thres {
-                        local_read_lock = None;
-
-                        let mut buf = AllocMonBuf::new(size as usize, alloc_thresh);
+                        let mut buf = AllocMonBuf::new(size as usize, opts.archive_cache_mem);
 
                         let mut off = 0;
-                        local_read_lock = None;
-                        local_read_lock = Some(read_mutex.lock().unwrap());
+
                         loop {
                             match reader.read(&mut buf[off..(off+opts.read_buffer).min(size as usize)]) {
                                 Ok(0) => break,
@@ -278,7 +281,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                                 },
                             }
                         }
-                        local_read_lock = None;
+                        local_read_lock.unlock();
                         assert_eq!(off,size as usize);
 
                         let p = p.clone();
@@ -294,13 +297,13 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                             let p = p.clone();
                             pool.spawn(move |_| {
                                 let (size,path) = {
-                                    let s = s.read().unwrap();
+                                    let s = s.read();
                                     s.eventually_store_vfs(false);
                                     let e = &s.tree[id];
                                     ( e.file_size.unwrap(), e.path.clone() )
                                 };
                                 let reader = try_return!(File::open(&path),"\tFailed to open file for big zip read: {} ({})",opts.path_disp(&p));
-                                let reader = MutexedReader{inner: reader,mutex: &read_mutex};
+                                let reader = MutexedReader{inner: reader,mutex: read_mutex.clone()};
                                 let reader = BufReader::with_capacity(64*1024*1024,reader);
                         
                                 let r = try_return!(open_zip(reader,&path,s,opts),"\tFailed to open ZIP: {} ({})",opts.path_disp(&p));
@@ -325,13 +328,13 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                                 },
                             }
                         }
-                        local_read_lock = None;
+                        local_read_lock.unlock();
                     }
-                    local_read_lock = None;
+                    local_read_lock.unlock();
 
                     let hash = hasher.finalize();
 
-                    let mut s = s.write().unwrap();
+                    let mut s = s.write();
 
                     let entry = &mut s.tree[id];
 
@@ -350,12 +353,11 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
 
                     s.eventually_store_vfs(false);
 
-                    local_read_lock = None;
-                    local_read_lock = Some(read_mutex.lock().unwrap());
+                    local_read_lock.lock();
                 }
             }
         }
-        local_read_lock = None;
+        local_read_lock.unlock();
         Ok(())
     })
 }

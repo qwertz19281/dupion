@@ -13,7 +13,6 @@ use std::fs::Metadata;
 use std::io::Read;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
-use std::path::PathBuf;
 
 const DROPBEHIND_BLOCK : u64 = 512 * 1024;
 const PREFETCH_SHIFT : u8 = 16;

@@ -1,6 +1,7 @@
 use super::*;
 use opts::Opts;
-use std::{ffi::CString, sync::{Arc, RwLock}, path::Path, io::{Read, Write, Seek}};
+use std::{ffi::CString, sync::Arc, path::Path, io::{Read, Write, Seek}};
+use parking_lot::RwLock;
 use state::State;
 use libarchive::{entry::OwnedEntry, reader::{StreamReader, Reader as AReader, Builder}, archive::{FileType, Entry, ReadFormat, ReadFilter, ReadCompression}};
 use sha2::Sha512;
@@ -51,7 +52,7 @@ pub fn decode_zip<'r,R>(mut ar: R, zip_path: &Path, state: &RwLock<State>, opts:
 
                         let path = zip_path.join(name);
 
-                        let mut s = state.write().unwrap();
+                        let mut s = state.write();
 
                         let id = s.tree.cid_and_create(&path);
 
@@ -83,7 +84,7 @@ pub fn decode_zip<'r,R>(mut ar: R, zip_path: &Path, state: &RwLock<State>, opts:
     })();
     if result.is_err() {
         eprintln!("\tUpgrade(1) {}",opts.path_disp(zip_path));
-        if let Some(e) = state.write().unwrap().tree.resolve_mut(zip_path) {
+        if let Some(e) = state.write().tree.resolve_mut(zip_path) {
             e.failure = Some(1);
         }
     }
@@ -102,7 +103,7 @@ pub fn open_zip<'r,R>(r: R,path: &Path,state: &RwLock<State>, opts: &Opts) -> An
     })();
     if result.is_err() {
         eprintln!("\tUpgrade(1) {}",opts.path_disp(path));
-        if let Some(e) = state.write().unwrap().tree.resolve_mut(path) {
+        if let Some(e) = state.write().tree.resolve_mut(path) {
             e.failure = Some(1);
         }
     }

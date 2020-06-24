@@ -9,6 +9,8 @@ pub struct Opts {
     pub force_absolute_paths: bool,
     pub read_buffer: usize,
     pub prefetch_budget: u64,
+    //pub huge_zip_thres: u64,
+    pub threads: usize,
     pub pass_1_hash: bool,
     pub archive_cache_mem: usize,
     pub dir_prefetch: bool,
