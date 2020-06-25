@@ -1,6 +1,6 @@
 use super::*;
 use entry::VfsEntry;
-use std::{ops::{IndexMut, Index}, path::{PathBuf, Path, Component}, sync::Arc};
+use std::{ops::{IndexMut, Index, Deref}, path::{PathBuf, Path, Component}, sync::Arc, ffi::{OsStr, OsString}};
 
 pub mod entry;
 pub mod deser;
@@ -28,7 +28,7 @@ impl Vfs {
 
         is_absolute(path);
 
-        let mut current_build = PathBuf::new();
+        let mut current_build = PathBuf::with_capacity(path.as_os_str().len()*2);
         
         for c in path.components() {
             current_build.push(c);
@@ -86,10 +86,11 @@ impl Vfs {
         if c == &Component::CurDir {return Some(id);}
 
         let entry = &self[id];
-        is_absolute(&entry.path);
+        //is_absolute(&entry.path);
         for &cid in &entry.childs {
-            let path = &self[cid].path;
-            if path.ends_with(c) {
+            let plc = &self[cid].plc;
+            debug_assert_eq!(plc,&to_plc(&self[cid].path));
+            if plc == c.as_os_str() {
                 return Some(cid);
             }
         }
@@ -104,6 +105,7 @@ impl Vfs {
         };
         senf.entries.push(VfsEntry{
             path: static_empty_arc_path,
+            plc: OsString::with_capacity(0),
             ctime: None,
             file_size: None,
             dir_size: None,
@@ -121,6 +123,7 @@ impl Vfs {
             disp_relevated: false,
             failure: None,
             treediff_stat: 0,
+            dedup_state: None,
         });
         senf
     }
@@ -165,4 +168,32 @@ pub fn is_absolute(path: &Path) {
     assert!(path.is_absolute() || {
         path.components().next().is_none()
     });
+}
+
+pub struct AbsPath<P> where P: AsRef<Path> {
+    inner: P,
+}
+
+impl<P> From<P> for AbsPath<P> where P: AsRef<Path> {
+    fn from(inner: P) -> Self {
+        is_absolute(inner.as_ref());
+        Self{inner}
+    }
+}
+
+impl<P> Deref for AbsPath<P> where P: AsRef<Path> {
+    type Target = P;
+    fn deref(&self) -> &P {
+        &self.inner
+    }
+}
+
+pub fn to_plc(p: &Path) -> OsString {
+    let mut s = p.components()
+        .last()
+        .map(|c| c.as_os_str() )
+        .unwrap_or(OsStr::new(""))
+        .to_owned();
+    s.shrink_to_fit();
+    s
 }

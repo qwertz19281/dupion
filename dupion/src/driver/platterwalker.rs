@@ -9,7 +9,6 @@ use std::{sync::{atomic::Ordering, Arc}, io::{Read, Write, self}, fs::{Metadata,
 use util::*;
 use zip::{open_zip, decode_zip};
 use io::{BufReader, Cursor};
-use parking_lot::Mutex;
 
 pub struct PlatterWalker {
     pub entries: Option<Vec<(u64,VfsId)>>,
@@ -48,8 +47,6 @@ impl Driver for PlatterWalker {
                 scan.set_prefilter(Box::new(move |path,ft,_| {
                     ft.is_file() && !ft.is_symlink() && path.to_str().is_some()
                 }));
-
-                
 
                 for entry_set in scan {
                     let mut s = state.write();
@@ -210,8 +207,9 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
             if do_hash {
                 e.disp_add_relevant();
                 assert!(e.valid);
+                let path = e.path.clone();
                 Some(Reapion{
-                    path: e.path.clone(),
+                    path,
                     id,
                 })
             }else{
@@ -222,7 +220,6 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
         let mut reaper = MultiFileReadahead::new(filtered);
 
         reaper.dropbehind(false);
-        reaper.budget(opts.prefetch_budget);
 
         //let huge_zip_thres = 256*1024*1024;
         let huge_zip_thres = opts.archive_cache_mem as u64 / opts.threads as u64;
@@ -231,10 +228,15 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
 
         let mut local_read_lock = read_mutex.clone();
 
+        let mut cache_watcher = CacheUsable::new(opts.prefetch_budget);
+
         local_read_lock.lock();
         //local_read_lock = None;
 
         'big: loop {
+            let budget = cache_watcher.get();
+            //eprintln!("Budget: {}",budget);
+            reaper.budget(budget);
             match reaper.next() {
                 None => break,
                 Some(Err(e)) => {
@@ -352,6 +354,8 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                     disp_processed_files.fetch_add(1,Ordering::Relaxed);
 
                     s.eventually_store_vfs(false);
+
+                    drop(s);
 
                     local_read_lock.lock();
                 }

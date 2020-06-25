@@ -13,7 +13,7 @@ fn main() {
         paths: o.dirs.clone(),
         verbose: o.verbose,
         shadow_rule: o.shadow_rule,
-        force_absolute_paths: o.absolute_path,
+        force_absolute_paths: o.absolute,
         read_buffer:       ((o.read_buffer * 1048576.0) as usize +1024)/4096*4096,
         prefetch_budget: ((o.prefetch_budget * 1048576.0) as u64 +1024)/4096*4096,
         pass_1_hash: o.pass_1_hash,
@@ -31,9 +31,7 @@ fn main() {
         opts.threads = get_threads();
     }
 
-    if !o.no_scan {
-        opts.validate().unwrap();
-    }
+    opts.validate().unwrap();
 
     let state = Box::leak(Box::new(RwLock::new(State::new(!o.no_cache))));
 
@@ -62,10 +60,10 @@ fn main() {
 
     eprintln!("#### Result");
 
-    if !o.print_structson {
-        printion(&sorted, &state, &opts);
-    }else{
-        printion_treediff(&mut state, &opts);
+    match o.output {
+        OutputMode::Groups => printion(&sorted, &state, &opts),
+        OutputMode::Tree => printion_tree(&mut state, &opts),
+        OutputMode::Diff => printion_treediff(&mut state, &opts),
     }
 }
 
@@ -99,8 +97,6 @@ pub fn scan(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
 
     let mut state = state.write();
 
-    //state.clean_old_validations(VfsId::ROOT);
-
     state.eventually_store_vfs(true);
 }
 
@@ -111,6 +107,8 @@ pub fn dirty_load(o: &OptInput, opts: &'static Opts, state: &'static RwLock<Stat
         let id = state.tree.cid_and_create(root);
         state.set_valid(id);
     }
+
+    if o.bench_pass_1 {return;}
 }
 
 pub fn spawn_info_thread(o: &Opts) {
@@ -188,16 +186,16 @@ pub struct OptInput {
     pub prefetch_budget: f64,
     #[structopt(long,default_value="1024.0",help="threaded archive read cache limit in MiB")]
     pub archive_cache_mem: f64,
-    #[structopt(short,long,default_value="0",help="number of threads for zip decoding, 0 = num_cpu logical count")]
+    #[structopt(short,long,default_value="0",help="number of threads for zip decoding, 0 = RAYON_NUM_THREADS or num_cpu logical count")]
     pub threads: usize,
     #[structopt(short,long,default_value="2",help="show shadowed files/directory (shadowed are e.g. childs of duplicate dirs) (0-3)\n0: show ALL, including pure shadowed groups\n1: show all except pure shadowed groups\n2: show shadowed only if there is also one non-shadowed in the group\n3: never show shadowed\n")]
     pub shadow_rule: u8,
 
     #[structopt(short,long,help="spam stderr")]
     pub verbose: bool,
-    #[structopt(long,help="force to display paths absolute")]
-    pub absolute_path: bool,
-    #[structopt(long,help="Enable hashing in 1st pass. Can affect performance positively or negatively")]
+    #[structopt(long,help="force to display absolute paths")]
+    pub absolute: bool,
+    #[structopt(long,help="EXPERIMENTAL Enable hashing in 1st pass. Can affect performance positively or negatively")]
     pub pass_1_hash: bool,
     #[structopt(long,help="don't read or write cache file")]
     pub no_cache: bool,
@@ -206,12 +204,29 @@ pub struct OptInput {
     #[structopt(long,help="EXPERIMENTAL prefetch directory metadata, eventually fails on non-root")]
     pub dir_prefetch: bool,
     #[structopt(short="a",long,help="also search inside archives. requires to scan and hash every archive")]
-    pub read_archives: bool,
-    #[structopt(long,help="EXPERIMENTAL")]
+    pub read_archives: bool, //TODO: build mode w/o archive support
+    #[structopt(long,help="EXPERIMENTAL don't scan and reuse cached data")]
     pub no_scan: bool,
-    #[structopt(long,help="EXPERIMENTAL")]
-    pub print_structson: bool,
+    #[structopt(short,long,parse(from_str),default_value="g",help="Results output mode (g/t/d)\ngroups: duplicate entries in sorted size groups\ntree: json as tree\ndiff: like tree, but exact dir comparision, reveals diffs and supersets\n")]
+    pub output: OutputMode,
 
     #[structopt(parse(from_os_str),help="directories to scan. cwd if none given")]
     pub dirs: Vec<PathBuf>,
+}
+
+pub enum OutputMode {
+    Groups,
+    Tree,
+    Diff,
+}
+
+impl From<&str> for OutputMode {
+    fn from(s: &str) -> Self {
+        match s.chars().next().map(|c| c.to_ascii_lowercase() ) {
+            Some('g') => Self::Groups,
+            Some('t') => Self::Tree,
+            Some('d') => Self::Diff,
+            _ => panic!("Invalid output mode"),
+        }
+    }
 }

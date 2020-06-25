@@ -1,5 +1,5 @@
 use super::*;
-use std::{sync::{atomic::Ordering, Arc}};
+use std::{sync::{atomic::Ordering, Arc}, ffi::OsString};
 use util::{disp_relevant_files, Hash, disp_relevant_bytes, Size};
 
 use state::State;
@@ -8,6 +8,7 @@ use state::State;
 #[derive(Clone)]
 pub struct VfsEntry {
     pub path: Arc<Path>,
+    pub plc: OsString,
     pub ctime: Option<i64>,
     pub file_size: Option<Size>,
     pub dir_size: Option<Size>,
@@ -25,11 +26,13 @@ pub struct VfsEntry {
     pub disp_relevated: bool,
     pub failure: Option<u64>,
     pub treediff_stat: u8,
+    pub dedup_state: Option<bool>,
 }
 
 impl VfsEntry {
     pub fn new(path: Arc<Path>) -> Self {
         Self{
+            plc: to_plc(&path),
             path,
             ctime: None,
             file_size: None,
@@ -48,6 +51,7 @@ impl VfsEntry {
             disp_relevated: false,
             failure: None,
             treediff_stat: 0,
+            dedup_state: None,
         }
     }
 
@@ -178,6 +182,7 @@ impl State {
             s.file_hash = None;
             s.dir_size = None;
             s.dir_hash = None;
+            s.dedup_state = None;
             s.ctime = Some(ctime);
             s.valid = true;
             false

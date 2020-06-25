@@ -2,11 +2,11 @@ use super::*;
 
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde_derive::*;
-use std::{io::Cursor, sync::atomic::Ordering, collections::HashSet};
+use std::{io::{BufReader, Cursor}, sync::atomic::Ordering, collections::HashSet};
 use sha2::digest::generic_array::GenericArray;
 use state::State;
 use util::{vfs_store_notif, Hash, Size};
-use std::cell::RefCell;
+use std::{fs::File, cell::RefCell};
 
 #[derive(Serialize,Deserialize)]
 struct EntryIndermediate {
@@ -17,8 +17,11 @@ struct EntryIndermediate {
     childs: Vec<VfsId>,
     was_file: bool,
     was_dir: bool,
+    ///use for libarchive fail, so if set and number smaller than current version, force rehash
     #[serde(default)] 
     upgrade: Option<u64>,
+    #[serde(default)] 
+    v1_dedup_state: Option<bool>,
 }
 
 impl Serialize for VfsEntry {
@@ -35,6 +38,7 @@ impl Serialize for VfsEntry {
             was_file: self.is_file || (self.was_file && !self.valid),
             was_dir: self.is_dir || (self.was_dir && !self.valid),
             upgrade: self.failure,
+            v1_dedup_state: self.dedup_state,
         };
         i.serialize(serializer)
     }
@@ -46,25 +50,30 @@ impl<'de> Deserialize<'de> for VfsEntry {
         D: Deserializer<'de>,
     {
         EntryIndermediate::deserialize(deserializer)
-            .map(|i| VfsEntry{
-                path: PathBuf::from(&i.path).into(),
-                ctime: i.ctime,
-                file_size: i.file_size,
-                dir_size: None,
-                file_hash: i.file_hash.map(|h| decode_hash(&h) ),
-                dir_hash: None,
-                childs: i.childs,
-                valid: false,
-                is_file: false,
-                is_dir: false,
-                was_file: i.was_file,
-                was_dir: i.was_dir,
-                file_shadowed: false,
-                dir_shadowed: false,
-                unique: false,
-                disp_relevated: false,
-                failure: i.upgrade,
-                treediff_stat: 0,
+            .map(|i| {
+                let path: Arc<Path> = PathBuf::from(&i.path).into();
+                VfsEntry{
+                    plc: to_plc(&path),
+                    path,
+                    ctime: i.ctime,
+                    file_size: i.file_size,
+                    dir_size: None,
+                    file_hash: i.file_hash.map(|h| decode_hash(&h) ),
+                    dir_hash: None,
+                    childs: i.childs,
+                    valid: false,
+                    is_file: false,
+                    is_dir: false,
+                    was_file: i.was_file,
+                    was_dir: i.was_dir,
+                    file_shadowed: false,
+                    dir_shadowed: false,
+                    unique: false,
+                    disp_relevated: false,
+                    failure: i.upgrade,
+                    treediff_stat: 0,
+                    dedup_state: i.v1_dedup_state,
+                }
             })
     }
 }
@@ -82,10 +91,12 @@ impl State {
         if self.cache_allowed {
             let path = PathBuf::from("./dedupion_cache");
             if path.is_file() {
-                let buf = tryz!(std::fs::read(&path));
-                let entries: Vec<VfsEntry> = tryz!(serde_json::from_reader(Cursor::new(buf)));
+                let reader= tryz!(File::open(&path));
+                let reader = BufReader::new(reader);
+                let entries: Vec<VfsEntry> = tryz!(serde_json::from_reader(reader));
                 self.tree.entries = entries;
-                DEDUP.with(|z| *z.borrow_mut() = HashSet::new() );
+                //drop the previous intern map
+                DEDUP.with(|z| *z.borrow_mut() = HashSet::with_capacity(0) );
             }
         }
     }
@@ -95,6 +106,7 @@ pub fn encode_hash(h: &Hash) -> String {
     base64::encode(&***h)
 }
 
+//for Hash interning
 thread_local! {
     pub static DEDUP: RefCell<HashSet<Hash>> = RefCell::new(HashSet::new());
 }

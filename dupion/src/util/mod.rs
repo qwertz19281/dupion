@@ -3,9 +3,10 @@ use std::{collections::HashMap, sync::Arc};
 use sha2::digest::generic_array::GenericArray;
 use sha2::digest::generic_array::typenum::U64;
 use group::{SizeGroup, HashGroup};
-use std::{io::{Seek, Read}, sync::{atomic::{Ordering, AtomicUsize, AtomicBool}}, time::Duration, ops::{DerefMut, Deref}, mem::ManuallyDrop};
-use parking_lot::{RawMutex, Mutex};
+use std::{io::{Seek, Read}, sync::{atomic::{Ordering, AtomicUsize, AtomicBool}}, time::Duration, ops::{DerefMut, Deref}};
+use parking_lot::RawMutex;
 use parking_lot::lock_api::RawMutex as _;
+use sysinfo::*;
 
 pub type Size = u64;
 pub type Hash = Arc<GenericArray<u8,U64>>;
@@ -31,27 +32,27 @@ pub struct MutexedReader<R> {
 
 impl<R> Read for MutexedReader<R> where R: Read {
     fn read_vectored(&mut self, bufs: &mut [std::io::IoSliceMut<'_>]) -> std::io::Result<usize> {
-        let x = self.mutex.lock();
+        self.mutex.lock();
         let r = self.inner.read_vectored(bufs);
-        drop(x);
+        self.mutex.unlock();
         r
     }
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> std::io::Result<usize> {
-        let x = self.mutex.lock();
+        self.mutex.lock();
         let r = self.inner.read_to_end(buf);
-        drop(x);
+        self.mutex.unlock();
         r
     }
     fn read_to_string(&mut self, buf: &mut String) -> std::io::Result<usize> {
-        let x = self.mutex.lock();
+        self.mutex.lock();
         let r = self.inner.read_to_string(buf);
-        drop(x);
+        self.mutex.unlock();
         r
     }
     fn read_exact(&mut self, buf: &mut [u8]) -> std::io::Result<()> {
-        let x = self.mutex.lock();
+        self.mutex.lock();
         let r = self.inner.read_exact(buf);
-        drop(x);
+        self.mutex.unlock();
         r
     }
     fn bytes(self) -> std::io::Bytes<Self>
@@ -73,9 +74,9 @@ impl<R> Read for MutexedReader<R> where R: Read {
         panic!()
     }
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let x = self.mutex.lock();
+        self.mutex.lock();
         let r = self.inner.read(buf);
-        drop(x);
+        self.mutex.unlock();
         r
     }
 
@@ -156,5 +157,26 @@ impl ZeroLock {
 impl Drop for ZeroLock {
     fn drop(&mut self) {
         self.unlock()
+    }
+}
+
+pub struct CacheUsable {
+    max: u64,
+    sys: System,
+}
+
+impl CacheUsable {
+    pub fn new(max: u64) -> Self {
+        Self{
+            max,
+            sys: System::new(),
+        }
+    }
+
+    pub fn get(&mut self) -> u64 {
+        self.sys.refresh_memory();
+        let sys_available = self.sys.get_total_memory() - self.sys.get_used_memory();
+        let for_caching = (sys_available*1000/2+1024)/4096*4096;
+        for_caching.min(self.max)
     }
 }

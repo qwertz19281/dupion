@@ -411,9 +411,12 @@ impl<D> Iterator for ToScan<D> where D: Default {
                             if let Ok(meta) = std::fs::metadata(e.path()) {
                                 e.metadata = Some(meta);
                             }
-                            if let Ok(canon) = std::fs::canonicalize(e.path()) {
+                            /*if let Ok(canon) = std::fs::canonicalize(e.path()) {
+                                assert_eq!(canon,e.path());
                                 e.canon_path = Some(canon);
-                            }
+                            }*/
+                            assert!(e.path().is_absolute());
+                            e.canon_path = Some(e.path().to_owned());
                         }
                         self.phy_sorted_leaves.push((offset, e));
                     }

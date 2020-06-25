@@ -20,4 +20,4 @@ include = [
 [dependencies]
 btrfs2 = "1.2.2"
 mnt = "0.3.1"
-libc = "0.2.70"
+libc = ">=0.2.70"

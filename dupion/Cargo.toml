@@ -17,9 +17,10 @@ serde_json = "1.0"
 serde = "1.0"
 serde_derive = "1.0"
 base64 = "0.12"
-libc = "0.2.71"
+libc = ">=0.2.70"
 parking_lot = "0.11"
 num_cpus = "1.13"
+sysinfo = "0.14"
 
 [dependencies.platter-walk]
 path = "../platter-walk"
