@@ -3,19 +3,19 @@ use state::State;
 use group::HashGroup;
 use size_format::SizeFormatterBinary;
 use opts::Opts;
-use vfs::{VfsId, entry::VfsEntryType};
+use vfs::VfsId;
 use util::{Hash, Size};
 use sha2::{Digest, Sha512};
 use std::{sync::Arc, io::Write, cmp::Reverse};
 
-pub mod treestat;
-pub mod treediff;
-
 pub fn export(b: &mut State) -> Vec<HashGroup> {
     let tree = &mut b.tree;
+    b.sizes.shrink_to_fit();
+    b.hashes.shrink_to_fit();
     for e in b.hashes.values_mut() {
-        e.entries.sort_by_key(|(t,id)| 
-            (t.order(),tree[*id].path.clone())
+        e.entries.shrink_to_fit();
+        e.entries.sort_by_key(|&id| 
+            tree[id].path.clone()
         );
     }
 
@@ -24,69 +24,15 @@ pub fn export(b: &mut State) -> Vec<HashGroup> {
         .collect::<Vec<_>>();
 
     v.sort_by_key(|e| {
-        let (fd_order,name) = 
+        let name = 
             e.entries.get(0).map_or(
-                (0,b.tree.static_empty_arc_path.clone()),
-                |(typ,id)| (typ.order(),b.tree[*id].path.clone())
+                b.tree.static_empty_arc_path.clone(),
+                |&id| b.tree[id].path.clone()
             );
         
-        (Reverse(e.size),fd_order,name)
+        (Reverse(e.size),e.typ.order(),name)
     } );
     v
-}
-
-pub fn printion(v: &[HashGroup], b: &State, opts: &Opts) {
-    for h in v {
-        let mut non_shadowed = 0usize;
-        let mut shadowed = 0usize;
-
-        let entries = &h.entries.iter()
-            .filter(|(t,e)| b.tree[*e].is2(*t) )
-            .collect::<Vec<_>>();
-
-        if entries.len() <= 1 {continue;}
-
-        for (t,e) in entries.iter() {
-            let e = &b.tree[*e];
-            if e.exists() {
-                if e.shadowed(*t) {
-                    shadowed += 1;
-                }else{
-                    non_shadowed += 1;
-                }
-            }
-        }
-        
-        //assert!(shadowed != 1);
-
-        let hide_shadowed = {
-            match opts.shadow_rule {
-                0 => false,
-                1 => non_shadowed == 0,
-                2 => non_shadowed != 1,
-                3 => true,
-                _ => unreachable!(),
-            }
-        };
-
-        if hide_shadowed && non_shadowed <= 1 {continue;}
-
-        println!("\nGroup {}B", SizeFormatterBinary::new(h.size));
-        for (t,e) in entries {
-            let e = &b.tree[*e];
-
-            if !hide_shadowed || !e.shadowed(*t) {
-                assert_eq!(e.size(*t).unwrap(),h.size);
-                let tt = t.icon2(e.is_dir);
-                println!(
-                    "   {}{} {}",
-                    tt,
-                    if e.shadowed(*t) {'S'} else {' '},
-                    opts.path_disp(&e.path)
-                );
-            }
-        }
-    }
 }
 
 pub fn calculate_dir_hash(state: &mut State, id: VfsId) -> Result<(Size,Hash),()> {

@@ -103,7 +103,7 @@ unsafe extern "C" fn stream_read_callback<T: Read>(handle: *mut ffi::Struct_arch
     match pipe.read_bytes() {
         Ok(size) => size as ssize_t,
         Err(e) => {
-            let desc = CString::new(e.description()).unwrap();
+            let desc = CString::new(format!("{}",e)).unwrap();
             ffi::archive_set_error(handle, e.raw_os_error().unwrap_or(0), desc.as_ptr());
             -1 as ssize_t
         }

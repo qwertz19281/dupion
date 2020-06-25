@@ -2,7 +2,7 @@ use super::*;
 
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde_derive::*;
-use std::{io::{BufReader, Cursor}, sync::atomic::Ordering, collections::HashSet};
+use std::{io::BufReader, sync::atomic::Ordering, collections::HashSet};
 use sha2::digest::generic_array::GenericArray;
 use state::State;
 use util::{vfs_store_notif, Hash, Size};
@@ -21,7 +21,9 @@ struct EntryIndermediate {
     #[serde(default)] 
     upgrade: Option<u64>,
     #[serde(default)] 
-    v1_dedup_state: Option<bool>,
+    dedup_state: Option<bool>,
+    #[serde(default="defhys")] 
+    phys: Option<u64>,
 }
 
 impl Serialize for VfsEntry {
@@ -38,7 +40,8 @@ impl Serialize for VfsEntry {
             was_file: self.is_file || (self.was_file && !self.valid),
             was_dir: self.is_dir || (self.was_dir && !self.valid),
             upgrade: self.failure,
-            v1_dedup_state: self.dedup_state,
+            dedup_state: self.dedup_state,
+            phys: self.phys,
         };
         i.serialize(serializer)
     }
@@ -72,7 +75,8 @@ impl<'de> Deserialize<'de> for VfsEntry {
                     disp_relevated: false,
                     failure: i.upgrade,
                     treediff_stat: 0,
-                    dedup_state: i.v1_dedup_state,
+                    dedup_state: i.dedup_state,
+                    phys: i.phys,
                 }
             })
     }
@@ -156,4 +160,8 @@ impl<'de> Deserialize<'de> for VfsId {
         usize::deserialize(deserializer)
             .map(|v| VfsId{evil_inner: v} )
     }
+}
+
+fn defhys() -> Option<u64> {
+    Some(0)
 }

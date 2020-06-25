@@ -103,7 +103,7 @@ impl<'r> Disk<'r> {
                 }
             }
             if write_pending {
-                bytes += try!(self.write_data(reader));
+                bytes += self.write_data(reader)?;
                 write_pending = false;
             }
         }

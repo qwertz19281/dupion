@@ -43,14 +43,14 @@ impl fmt::Display for ArchiveError {
     }
 }
 
-impl<'a,'r> From<&'a archive::Handle<'r>> for ArchiveError {
-    fn from(handle: &'a archive::Handle) -> ArchiveError {
+impl<'a,'r> From<&'a dyn archive::Handle<'r>> for ArchiveError {
+    fn from(handle: &'a dyn archive::Handle) -> ArchiveError {
         ArchiveError::Sys(handle.err_code(), handle.err_msg())
     }
 }
 
-impl<'a,'r> From<&'a archive::Handle<'r>> for ArchiveResult<()> {
-    fn from(handle: &'a archive::Handle) -> ArchiveResult<()> {
+impl<'a,'r> From<&'a dyn archive::Handle<'r>> for ArchiveResult<()> {
+    fn from(handle: &'a dyn archive::Handle) -> ArchiveResult<()> {
         match handle.err_code() {
             ErrCode(0) => Ok(()),
             _ => Err(ArchiveError::from(handle)),

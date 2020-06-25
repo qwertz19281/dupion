@@ -1,4 +1,4 @@
-use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{printion, export, calculate_dir_hash, find_shadowed, treestat::printion_tree, treediff::printion_treediff}, util::*, vfs::VfsId, zip::setlocale_hack};
+use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{export, calculate_dir_hash, find_shadowed}, util::*, vfs::VfsId, zip::setlocale_hack, output::{tree::print_tree, groups::print_groups, treediff::print_treediff}};
 use std::{time::Duration, sync::{atomic::Ordering}, path::PathBuf};
 use size_format::SizeFormatterBinary;
 use parking_lot::RwLock;
@@ -61,9 +61,9 @@ fn main() {
     eprintln!("#### Result");
 
     match o.output {
-        OutputMode::Groups => printion(&sorted, &state, &opts),
-        OutputMode::Tree => printion_tree(&mut state, &opts),
-        OutputMode::Diff => printion_treediff(&mut state, &opts),
+        OutputMode::Groups => print_groups(&sorted, &state, &opts),
+        OutputMode::Tree => print_tree(&mut state, &opts),
+        OutputMode::Diff => print_treediff(&mut state, &opts),
     }
 }
 

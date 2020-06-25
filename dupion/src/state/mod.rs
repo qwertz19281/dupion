@@ -30,8 +30,9 @@ impl State {
                     Entry::Occupied(mut v) => {
                         let v = v.get_mut();
                         assert_eq!(v.size,size);
-                        v.entries.retain(|e| e != &(typ,id) ); //TODO opti
-                        v.entries.push((typ,id));
+                        if !v.entries.iter().any(|e| e == &(typ,id) ) {
+                            v.entries.push((typ,id));
+                        }
                     }
                 }
                 Ok(())
@@ -56,7 +57,8 @@ impl State {
                 match hashes.entry(hash.clone()) {
                     Entry::Vacant(v) => {
                         v.insert(HashGroup{
-                            entries: vec![(typ,id)],
+                            entries: vec![id],
+                            typ,
                             size,
                             hash: hash.clone(),
                         });
@@ -65,9 +67,11 @@ impl State {
                         let v = v.get_mut();
                         assert_eq!(v.size,size);
                         assert_eq!(v.hash,*hash);
+                        assert_eq!(v.typ,typ);
                         *hash = Arc::clone(&v.hash); //arc clone dedup
-                        v.entries.retain(|e| e != &(typ,id) ); //TODO opti
-                        v.entries.push((typ,id));
+                        if !v.entries.iter().any(|e| *e == id ) {
+                            v.entries.push(id);
+                        }
                     }
                 }
                 Ok(())

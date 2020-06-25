@@ -27,6 +27,7 @@ pub struct VfsEntry {
     pub failure: Option<u64>,
     pub treediff_stat: u8,
     pub dedup_state: Option<bool>,
+    pub phys: Option<u64>,
 }
 
 impl VfsEntry {
@@ -52,6 +53,7 @@ impl VfsEntry {
             failure: None,
             treediff_stat: 0,
             dedup_state: None,
+            phys: Some(0),
         }
     }
 
@@ -183,6 +185,7 @@ impl State {
             s.dir_size = None;
             s.dir_hash = None;
             s.dedup_state = None;
+            s.phys = Some(0);
             s.ctime = Some(ctime);
             s.valid = true;
             false

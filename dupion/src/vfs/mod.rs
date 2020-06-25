@@ -124,6 +124,7 @@ impl Vfs {
             failure: None,
             treediff_stat: 0,
             dedup_state: None,
+            phys: Some(0),
         });
         senf
     }

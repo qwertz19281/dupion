@@ -162,6 +162,7 @@ pub fn size_file(path: &Path, meta: &Metadata, phy_off: u64, dest: &mut Vec<(u64
     e.is_file = true;
     
     e.file_size = Some(size);
+    e.phys = Some(phy_off);
     
     s.push_to_size_group(id,true,false).unwrap();
     if s.tree[id].file_hash.is_some() {
@@ -346,7 +347,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                         entry.is_dir = true;
                     }
 
-                    let size = entry.file_size.unwrap() as usize;
+                    //let size = entry.file_size.unwrap() as usize;
 
                     s.push_to_hash_group(id,true,false).unwrap();
 
