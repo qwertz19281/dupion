@@ -180,3 +180,39 @@ impl CacheUsable {
         for_caching.min(self.max)
     }
 }
+
+pub trait PushGrow<T>: Extend<T> {
+    fn reserve(&mut self, n: usize);
+}
+
+impl<T> PushGrow<T> for Vec<T> {
+    fn reserve(&mut self, n: usize) {
+        Vec::reserve(self,n)
+    }
+}
+
+pub struct RopedVec<T> {
+    inner: Vec<Vec<T>>,
+}
+
+impl<T> RopedVec<T> {
+    pub fn new() -> Self {
+        Self{
+            inner: Vec::new(),
+        }
+    }
+
+    pub fn push()
+}
+
+impl<T> Extend<T> for RopedVec<T> {
+    fn extend<T: IntoIterator<Item = T>>(&mut self, iter: T) {
+        todo!()
+    }
+}
+
+impl<T> PushGrow<T> for RopedVec<T> {
+    fn reserve(&mut self, n: usize) {
+        todo!()
+    }
+}
