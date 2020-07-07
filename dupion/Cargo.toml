@@ -21,6 +21,7 @@ libc = ">=0.2.70"
 parking_lot = "0.11"
 num_cpus = "1.13"
 sysinfo = "0.14"
+btrfs2 = "1.2.2"
 
 [dependencies.platter-walk]
 path = "../platter-walk"
