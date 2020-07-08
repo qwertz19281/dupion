@@ -252,7 +252,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                     {
                         let s = s.read();
                         if s.tree[id].file_size != Some(size) || s.tree[id].ctime != Some(ctime) {
-                            eprintln!("\tERROR: Skip comodified file: {}",opts.path_disp(&p));
+                            eprintln!("\tSkip comodified file: {}",opts.path_disp(&p));
                             continue;
                         }
                     };

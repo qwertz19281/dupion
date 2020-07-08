@@ -1,9 +1,10 @@
 use super::*;
 use std::{sync::atomic::Ordering, fs::{Metadata, File}};
 use util::{disp_processed_bytes, disp_processed_files};
-use btrfs2::{DedupeRange, FileDescriptor, DedupeRangeDestInfo, DedupeRangeStatus, deduplicate_range};
+use btrfs2::{DedupeRange, DedupeRangeDestInfo, DedupeRangeStatus, deduplicate_range};
 use std::os::unix::io::FromRawFd;
 use size_format::SizeFormatterBinary;
+use fd::FileDescriptor;
 
 pub struct BtrfsDedup;
 
@@ -12,6 +13,8 @@ impl Deduper for BtrfsDedup {
         // The dedups are split in batches to fit the os cache for readahead
         // the available file cache is estimated by the unused os memory
         // all files in batch will be opened 
+
+        let real = true;
 
         let mut go = 0;
 
@@ -24,10 +27,24 @@ impl Deduper for BtrfsDedup {
         while go < groups.len() {
             let cache_max = cache_info.get();
             let mut cache_take = 0;
+            let open_max = 512;
+            let mut open_take = 0;
+
+            //eprintln!("Acq OSC {} {}B",current.len(),SizeFormatterBinary::new(cache_max));
+
+            if groups[go].file_size*groups[go].sum < cache_max {
+                groups[go].range.start = 0;
+            }
 
             // fill batch by cache size measure
             while cache_take < cache_max && go < groups.len() {
                 let mut group = groups[go].clone();
+
+                open_take += group.sum;
+                if open_take > open_max {
+                    break;
+                }
+
                 let can_take = group.range.end - group.range.start;
                 let old_take = cache_take;
 
@@ -36,8 +53,8 @@ impl Deduper for BtrfsDedup {
                     let take = (cache_max - cache_take)/group.sum;
                     assert!(take < can_take);
 
-                    group.range = 0..take;
-                    groups[go].range.start = take;
+                    group.range.end = group.range.start+take;
+                    groups[go].range.start = group.range.end;
 
                     cache_take = cache_max;
                     current.push(group);
@@ -56,67 +73,54 @@ impl Deduper for BtrfsDedup {
 
             let mut batch_file_sum = 0;
 
+            let open_dup = |group: &DedupGroup,id: VfsId| {
+                let path = &s.tree[id].path;
+                let fd = match FileDescriptor::open(
+                    path,
+                    libc::O_RDWR,
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        eprintln!("\tError opening for dedup: {} ({})",e,opts.path_disp(path));
+                        return Err(());
+                    }
+                };
+
+                let meta = match fd_metadata(fd.get_value()) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        eprintln!("\tError reading metadata for dedup: {} ({})",e,opts.path_disp(path));
+                        return Err(());
+                    }
+                };
+
+                if meta.len() == group.file_size {
+                    Ok(fd)
+                }else{
+                    eprintln!("\tComodified file, skip group: {}",opts.path_disp(path));
+                    Err(())
+                }
+            };
+
             // open all the relevant files
             'g: for group in current.drain(..) {
-                let senpai_fd = {
-                    let path = &s.tree[group.senpai].path;
-                    eprintln!("\tGroup {}B..{}B {}",SizeFormatterBinary::new(group.range.start),SizeFormatterBinary::new(group.range.end),opts.path_disp(path));
-                    let fd = match FileDescriptor::open(
-                        path,
-                        libc::O_RDWR,
-                    ) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            eprintln!("\tError opening for dedup: {} ({})",e,opts.path_disp(path));
-                            continue 'g;
-                        }
-                    };
-
-                    let meta = match fd_metadata(fd.get_value()) {
-                        Ok(m) => m,
-                        Err(e) => {
-                            eprintln!("\tError reading metadata for dedup: {} ({})",e,opts.path_disp(path));
-                            continue 'g;
-                        }
-                    };
-
-                    if meta.len() == group.file_size {
-                        fd
-                    }else{
-                        eprintln!("\tComodified file, skip group: {}",opts.path_disp(path));
-                        continue 'g;
-                    }
+                eprintln!(
+                    "\tGroup {}B..{}B -> {}",
+                    SizeFormatterBinary::new(group.range.start),
+                    SizeFormatterBinary::new(group.range.end),
+                    opts.path_disp(&s.tree[group.senpai].path)
+                );
+                let senpai_fd = match open_dup(&group,group.senpai) {
+                    Ok(v) => v,
+                    Err(_) => continue 'g,
                 };
 
                 let mut dups_fd = Vec::with_capacity(group.dups.len());
 
                 for &id in &group.dups {
-                    let path = &s.tree[id].path;
-                    eprintln!("\t\t{}",opts.path_disp(path));
-                    let fd = match FileDescriptor::open(
-                        path,
-                        libc::O_RDWR,
-                    ) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            eprintln!("\tError opening for dedup: {} ({})",e,opts.path_disp(path));
-                            continue 'g;
-                        }
-                    };
-
-                    let meta = match fd_metadata(fd.get_value()) {
-                        Ok(m) => m,
-                        Err(e) => {
-                            eprintln!("\tError reading metadata for dedup: {} ({})",e,opts.path_disp(path));
-                            continue 'g;
-                        }
-                    };
-
-                    if meta.len() == group.file_size {
-                        dups_fd.push(fd);
-                    }else{
-                        eprintln!("\tComodified file, skip group: {}",opts.path_disp(path));
-                        continue 'g;
+                    match open_dup(&group,id) {
+                        Ok(v) => dups_fd.push(v),
+                        Err(_) => continue 'g,
                     }
                 }
 
@@ -148,29 +152,35 @@ impl Deduper for BtrfsDedup {
 
             readahead.sort_by_key(|v| v.0 );
 
-            for (_,fd,range) in &readahead {
-                unsafe{
-                    libc::posix_fadvise(
-                        fd.get_value(),
-                        range.start as i64,
-                        (range.end - range.start) as i64,
-                        libc::POSIX_FADV_SEQUENTIAL,
-                    );
+            if real {
+                for (_,fd,range) in &readahead {
+                    unsafe{
+                        libc::posix_fadvise(
+                            fd.get_value(),
+                            range.start as i64,
+                            (range.end - range.start) as i64,
+                            libc::POSIX_FADV_SEQUENTIAL,
+                        );
+                    }
                 }
-            }
-            for (_,fd,range) in &readahead {
-                unsafe{
-                    libc::posix_fadvise(
-                        fd.get_value(),
-                        range.start as i64,
-                        (range.end - range.start) as i64,
-                        libc::POSIX_FADV_WILLNEED,
-                    );
+                for (_,fd,range) in &readahead {
+                    unsafe{
+                        libc::posix_fadvise(
+                            fd.get_value(),
+                            range.start as i64,
+                            (range.end - range.start) as i64,
+                            libc::POSIX_FADV_WILLNEED,
+                        );
+                    }
                 }
             }
 
             // issue dedup_range ioctl for the dup ranges
             for (group,senpai_fd,dups_fd) in &opened {
+                assert_eq!(dups_fd.len(),group.dups.len());
+                let senpai_path = &s.tree[group.senpai].path;
+                eprintln!("\tDedup {}B..{}B -> {}",SizeFormatterBinary::new(group.range.start),SizeFormatterBinary::new(group.range.end),opts.path_disp(senpai_path));
+
                 let dest_infos: Vec<_> = dups_fd.iter()
                     .map(|fd| DedupeRangeDestInfo{
                         dest_fd: fd.get_value() as i64,
@@ -186,15 +196,29 @@ impl Deduper for BtrfsDedup {
                     dest_infos,
                 };
 
-                if let Err(e) = deduplicate_range(
-                    senpai_fd.get_value(),
-                    &mut dedup_range,
-                ) {
-                    eprintln!("\tError deduplicating: {}",e);
+                if real {
+                    if let Err(e) = deduplicate_range(
+                        senpai_fd.get_value(),
+                        &mut dedup_range,
+                    ) {
+                        eprintln!("\tError deduplicating: {}",e);
+                    }
                 }
 
                 disp_processed_bytes.fetch_add(group.dups.len() * (group.range.end - group.range.start) as usize,Ordering::Relaxed);
                 disp_processed_files.fetch_add(group.dups.len(),Ordering::Relaxed);
+
+                let mut deduped = 0;
+
+                for (i,&id) in dedup_range.dest_infos.iter().zip(group.dups.iter()) {
+                    deduped += i.bytes_deduped;
+                    let path = &s.tree[id].path;
+                    if i.status == DedupeRangeStatus::Differs {
+                        eprintln!("\t\tNot deduped {}",opts.path_disp(path));
+                    }
+                }
+
+                disp_deduped_bytes.fetch_add(deduped as usize,Ordering::Relaxed);
             }
 
         }
@@ -209,3 +233,4 @@ pub fn fd_metadata(fd: i32) -> std::io::Result<Metadata> {
     std::mem::forget(file);
     meta
 }
+

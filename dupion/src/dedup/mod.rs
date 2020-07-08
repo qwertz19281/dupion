@@ -7,19 +7,24 @@ use vfs::{entry::VfsEntryType, VfsId};
 use std::{sync::atomic::Ordering, ops::Range};
 
 pub mod btrfs;
+pub mod fd;
 
 pub trait Deduper {
     fn dedup(&mut self, state: &'static RwLock<State>, opts: &'static Opts) -> AnyhowResult<()> {
         disp_processed_files.store(0,Ordering::Release);
+        disp_prev.store(0,Ordering::Release);
         disp_processed_bytes.store(0,Ordering::Release);
         disp_relevant_files.store(0,Ordering::Release);
         disp_relevant_bytes.store(0,Ordering::Release);
+        disp_deduped_bytes.store(0, Ordering::Release);
         
         let s = state.write();
         let mut dest: Vec<DedupGroup> = Vec::with_capacity(s.hashes.len());
 
         for e in s.hashes.values() {
             if e.typ != VfsEntryType::File {continue;}
+            if e.size == 0 {continue;} //TODO proper min size option
+
             let mut senpai: Option<VfsId> = e.entries.iter()
                 .find(|&&id| s.tree[id].phys.is_some() && s.tree[id].dedup_state == Some(true) )
                 .cloned();
@@ -57,6 +62,9 @@ pub trait Deduper {
 
             candidates.retain(|&id| s.tree[id].phys.unwrap() != s.tree[senpai].phys.unwrap() );
             if candidates.is_empty() {continue;}
+            candidates.sort_by_key(|&id| s.tree[id].phys.unwrap() );
+            candidates.truncate(512); //TODO real max open file
+            candidates.shrink_to_fit();
             
             avg_phys += s.tree[senpai].phys.unwrap();
             avg_phys /= candidates.len() as u64 +1;
@@ -75,6 +83,8 @@ pub trait Deduper {
                 avg_phys,
             });
         }
+
+        drop(s);
 
         dest.sort_by_key(|g| g.avg_phys );
         dest.shrink_to_fit();

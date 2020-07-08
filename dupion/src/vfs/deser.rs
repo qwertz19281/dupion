@@ -22,7 +22,7 @@ struct EntryIndermediate {
     upgrade: Option<u64>,
     #[serde(default)] 
     dedup_state: Option<bool>,
-    #[serde(default="defhys")] 
+    #[serde(default)] 
     phys: Option<u64>,
 }
 
@@ -76,7 +76,7 @@ impl<'de> Deserialize<'de> for VfsEntry {
                     failure: i.upgrade,
                     treediff_stat: 0,
                     dedup_state: i.dedup_state,
-                    phys: i.phys,
+                    phys: None,
                 }
             })
     }

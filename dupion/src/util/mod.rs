@@ -20,6 +20,7 @@ pub static disp_relevant_bytes: AtomicUsize = AtomicUsize::new(0);
 pub static disp_relevant_files: AtomicUsize = AtomicUsize::new(0);
 pub static disp_processed_bytes: AtomicUsize = AtomicUsize::new(0);
 pub static disp_processed_files: AtomicUsize = AtomicUsize::new(0);
+pub static disp_deduped_bytes: AtomicUsize = AtomicUsize::new(usize::MAX);
 pub static disp_prev: AtomicUsize = AtomicUsize::new(0);
 pub static disp_enabled: AtomicBool = AtomicBool::new(false);
 pub static vfs_store_notif: AtomicBool = AtomicBool::new(false);
