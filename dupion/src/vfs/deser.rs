@@ -87,13 +87,13 @@ impl State {
         if self.cache_allowed && (force || vfs_store_notif.swap(false,Ordering::AcqRel)) {
             let mut stor = Vec::with_capacity(1024*1024);
             tryz!(serde_json::to_writer(&mut stor, &self.tree.entries));
-            tryz!(std::fs::write("./dedupion_cache",&stor));
+            tryz!(std::fs::write("./dupion_cache",&stor));
             //eprintln!("Wrote cache");
         }
     }
     pub fn eventually_load_vfs(&mut self) {
         if self.cache_allowed {
-            let path = PathBuf::from("./dedupion_cache");
+            let path = PathBuf::from("./dupion_cache");
             if path.is_file() {
                 let reader= tryz!(File::open(&path));
                 let reader = BufReader::new(reader);

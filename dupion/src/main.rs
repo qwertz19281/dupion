@@ -203,7 +203,7 @@ pub fn get_threads() -> usize {
 }
 
 #[derive(StructOpt)]
-#[structopt(name = "dedupion", about = "Find duplicate files and folders")]
+#[structopt(name = "dupion", about = "Find duplicate files and folders")]
 pub struct OptInput {
     #[structopt(long,default_value="1.0",help="EXPERIMENTAL read buffer in MiB")]
     pub read_buffer: f64,
