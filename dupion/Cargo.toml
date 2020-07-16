@@ -23,6 +23,10 @@ num_cpus = "1.13"
 sysinfo = "0.14"
 btrfs2 = "1.2.2"
 
+[dependencies.maligned]
+version = "0.2"
+features = ["align-4k"]
+
 [dependencies.platter-walk]
 path = "../platter-walk"
 

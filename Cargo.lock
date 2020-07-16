@@ -203,6 +203,7 @@ dependencies = [
  "btrfs2",
  "libarchive",
  "libc",
+ "maligned",
  "num_cpus",
  "parking_lot",
  "platter-walk",
@@ -325,6 +326,12 @@ checksum = "28247cc5a5be2f05fbcd76dd0cf2c7d3b5400cb978a28042abcd4fa0b3f8261c"
 dependencies = [
  "scopeguard",
 ]
+
+[[package]]
+name = "maligned"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e88c3cbe8288f77f293e48a28b3232e3defd203a6d839fa7f68ea4329e83464"
 
 [[package]]
 name = "maybe-uninit"
