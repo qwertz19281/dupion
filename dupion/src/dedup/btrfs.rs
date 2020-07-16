@@ -205,8 +205,8 @@ impl Deduper for BtrfsDedup {
                     }
                 }
 
-                disp_processed_bytes.fetch_add(group.dups.len() * (group.range.end - group.range.start) as usize,Ordering::Relaxed);
-                disp_processed_files.fetch_add(group.dups.len(),Ordering::Relaxed);
+                disp_processed_bytes.fetch_add(group.dups.len() as u64 * (group.range.end - group.range.start),Ordering::Relaxed);
+                disp_processed_files.fetch_add(group.dups.len() as u64,Ordering::Relaxed);
 
                 let mut deduped = 0;
 
@@ -218,7 +218,7 @@ impl Deduper for BtrfsDedup {
                     }
                 }
 
-                disp_deduped_bytes.fetch_add(deduped as usize,Ordering::Relaxed);
+                disp_deduped_bytes.fetch_add(deduped,Ordering::Relaxed);
             }
 
         }

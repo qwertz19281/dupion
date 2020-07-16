@@ -152,7 +152,7 @@ pub fn size_file(path: &Path, meta: &Metadata, phy_off: u64, dest: &mut Vec<(u64
 
     opts.log_verbosed("SIZE", &path);
 
-    disp_found_bytes.fetch_add(size as usize,Ordering::Relaxed);
+    disp_found_bytes.fetch_add(size,Ordering::Relaxed);
     disp_found_files.fetch_add(1,Ordering::Relaxed);
 
     let id = s.tree.cid_and_create(&path);
@@ -274,7 +274,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                                 Ok(n) => {
                                     hasher.write(&buf[off..off+n]).unwrap();
                                     off+=n;
-                                    disp_processed_bytes.fetch_add(n,Ordering::Relaxed);
+                                    disp_processed_bytes.fetch_add(n as u64,Ordering::Relaxed);
                                 },
                                 Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
                                 Err(e) if e.kind() == ErrorKind::Interrupted => {}
@@ -295,7 +295,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                         });
                     }else{
                         if do_zips && opts.zip_by_extension(&p) {
-                            disp_relevant_bytes.fetch_add(size as usize,Ordering::Relaxed);
+                            disp_relevant_bytes.fetch_add(size,Ordering::Relaxed);
                             disp_relevant_files.fetch_add(1,Ordering::Relaxed);
                             let p = p.clone();
                             pool.spawn(move |_| {
@@ -312,7 +312,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                                 let r = try_return!(open_zip(reader,&path,s,opts),"\tFailed to open ZIP: {} ({})",opts.path_disp(&p));
                                 try_return!(decode_zip(r,&path,s,opts),"\tFailed to read ZIP: {} ({})",opts.path_disp(&p));
                         
-                                disp_processed_bytes.fetch_add(size as usize,Ordering::Relaxed);
+                                disp_processed_bytes.fetch_add(size,Ordering::Relaxed);
                                 disp_processed_files.fetch_add(1,Ordering::Relaxed);
                             });
                         }
@@ -321,7 +321,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                                 Ok(0) => break,
                                 Ok(n) => {
                                     hasher.write(&buf[..n]).unwrap();
-                                    disp_processed_bytes.fetch_add(n,Ordering::Relaxed);
+                                    disp_processed_bytes.fetch_add(n as u64,Ordering::Relaxed);
                                 },
                                 Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
                                 Err(e) if e.kind() == ErrorKind::Interrupted => {}

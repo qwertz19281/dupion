@@ -59,8 +59,8 @@ impl VfsEntry {
 
     pub fn disp_add_relevant(&mut self) {
         if !self.disp_relevated && self.file_hash.is_none() {
-            let size = self.file_size.unwrap() as usize;
-            disp_relevant_bytes.fetch_add(size as usize,Ordering::Relaxed);
+            let size = self.file_size.unwrap();
+            disp_relevant_bytes.fetch_add(size,Ordering::Relaxed);
             disp_relevant_files.fetch_add(1,Ordering::Relaxed);
             self.disp_relevated = true;
         }

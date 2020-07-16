@@ -139,18 +139,18 @@ pub fn spawn_info_thread(o: &Opts) {
 }
 
 pub fn print_stat() {
-    let processed_files = disp_processed_files.load(Ordering::Acquire) as u64;
-    let relevant_files = disp_relevant_files.load(Ordering::Acquire) as u64;
-    let found_files = disp_found_files.load(Ordering::Acquire) as u64;
-    let processed_bytes = disp_processed_bytes.load(Ordering::Acquire) as u64;
-    let relevant_bytes = disp_relevant_bytes.load(Ordering::Acquire) as u64;
-    let found_bytes = disp_found_bytes.load(Ordering::Acquire) as u64;
-    let prev_bytes = disp_prev.swap(processed_bytes as usize, Ordering::AcqRel) as u64;
+    let processed_files = disp_processed_files.load(Ordering::Acquire);
+    let relevant_files = disp_relevant_files.load(Ordering::Acquire);
+    let found_files = disp_found_files.load(Ordering::Acquire);
+    let processed_bytes = disp_processed_bytes.load(Ordering::Acquire);
+    let relevant_bytes = disp_relevant_bytes.load(Ordering::Acquire);
+    let found_bytes = disp_found_bytes.load(Ordering::Acquire);
+    let prev_bytes = disp_prev.swap(processed_bytes, Ordering::AcqRel);
     let deduped_bytes = disp_deduped_bytes.load(Ordering::Acquire);
     let alloced = alloc_mon.load(Ordering::Acquire) as u64;
     assert!(processed_bytes >= prev_bytes);
 
-    if deduped_bytes == usize::MAX {
+    if deduped_bytes == u64::MAX {
         eprint!(
             //"\x1B[2K\rAnalyzed files: {:>filefill$}/{} bytes: {:>12}B/{}B ({:>12}B/s) percent: {}%",
             "\x1B[2K\rFound: {} ({}B)        Hashed: {}/{} {}B/{}B ({}B/s)        alloc={}B",

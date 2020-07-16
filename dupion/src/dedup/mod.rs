@@ -71,8 +71,8 @@ pub trait Deduper {
 
             let size = s.tree[senpai].file_size.unwrap();
 
-            disp_relevant_bytes.fetch_add(candidates.len()*size as usize,Ordering::Relaxed);
-            disp_relevant_files.fetch_add(candidates.len(),Ordering::Relaxed);
+            disp_relevant_bytes.fetch_add(candidates.len() as u64*size,Ordering::Relaxed);
+            disp_relevant_files.fetch_add(candidates.len() as u64,Ordering::Relaxed);
 
             dest.push(DedupGroup{
                 sum: candidates.len() as u64 +1,

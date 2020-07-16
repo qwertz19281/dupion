@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use sha2::digest::generic_array::GenericArray;
 use sha2::digest::generic_array::typenum::U64;
 use group::{SizeGroup, HashGroup};
-use std::{io::{Seek, Read}, sync::{atomic::{Ordering, AtomicUsize, AtomicBool}}, time::Duration, ops::{DerefMut, Deref}};
+use std::{io::{Seek, Read}, sync::{atomic::{Ordering, AtomicUsize, AtomicBool, AtomicU64}}, time::Duration, ops::{DerefMut, Deref}};
 use parking_lot::RawMutex;
 use parking_lot::lock_api::RawMutex as _;
 use sysinfo::*;
@@ -16,14 +16,14 @@ pub type Hash = Arc<GenericArray<u8,U64>>;
 pub type Sizes = HashMap<Size,SizeGroup>;
 pub type Hashes = HashMap<Hash,HashGroup>;
 
-pub static disp_found_bytes: AtomicUsize = AtomicUsize::new(0);
-pub static disp_found_files: AtomicUsize = AtomicUsize::new(0);
-pub static disp_relevant_bytes: AtomicUsize = AtomicUsize::new(0);
-pub static disp_relevant_files: AtomicUsize = AtomicUsize::new(0);
-pub static disp_processed_bytes: AtomicUsize = AtomicUsize::new(0);
-pub static disp_processed_files: AtomicUsize = AtomicUsize::new(0);
-pub static disp_deduped_bytes: AtomicUsize = AtomicUsize::new(usize::MAX);
-pub static disp_prev: AtomicUsize = AtomicUsize::new(0);
+pub static disp_found_bytes: AtomicU64 = AtomicU64::new(0);
+pub static disp_found_files: AtomicU64 = AtomicU64::new(0);
+pub static disp_relevant_bytes: AtomicU64 = AtomicU64::new(0);
+pub static disp_relevant_files: AtomicU64 = AtomicU64::new(0);
+pub static disp_processed_bytes: AtomicU64 = AtomicU64::new(0);
+pub static disp_processed_files: AtomicU64 = AtomicU64::new(0);
+pub static disp_deduped_bytes: AtomicU64 = AtomicU64::new(u64::MAX);
+pub static disp_prev: AtomicU64 = AtomicU64::new(0);
 pub static disp_enabled: AtomicBool = AtomicBool::new(false);
 pub static vfs_store_notif: AtomicBool = AtomicBool::new(false);
 pub static alloc_mon: AtomicUsize = AtomicUsize::new(0);
@@ -94,13 +94,13 @@ pub struct AllocMonBuf(Vec<u8>);
 
 impl AllocMonBuf {
     pub fn new(size: usize, alloc_thresh: usize) -> Self {
-        while alloc_mon.load(Ordering::Acquire)+size as usize > alloc_thresh {
+        while alloc_mon.load(Ordering::Acquire)+size > alloc_thresh {
             std::thread::sleep(Duration::from_millis(50));
         }
-        let buf = align_first::<_,A4096>(size as usize);
+        let buf = align_first::<_,A4096>(size);
         assert_eq!(buf.len(),size);
         assert_eq!(buf.capacity(),size);
-        alloc_mon.fetch_add(size as usize, Ordering::AcqRel);
+        alloc_mon.fetch_add(size, Ordering::AcqRel);
         Self(buf)
     }
 }
