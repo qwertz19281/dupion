@@ -98,8 +98,13 @@ impl State {
         do_hash &= self.tree[id].file_hash.is_none();
         //only files
         do_hash &= self.tree[id].is_file;
-        //only hash if non-unique size or possible archive
-        do_hash &= self.more_than_one_size(self.tree[id].file_size.unwrap()) || opts.zip_by_extension(&self.tree[id].path);
+        
+        if !opts.zip_by_extension(&self.tree[id].path) {
+            //only hash if non-unique size or possible archive
+            do_hash &= self.more_than_one_size(self.tree[id].file_size.unwrap());
+            //only hash if min file size or possible archive
+            do_hash &= self.tree[id].file_size.unwrap() >= opts.scan_size_min;
+        }
         //hash anyway if possible archive and not dir (happens if archive-scanning was disabled in previous cache)
         do_hash |= opts.zip_by_extension(&self.tree[id].path) && self.tree[id].is_file && !self.tree[id].is_dir;
         do_hash

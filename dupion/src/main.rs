@@ -22,6 +22,7 @@ fn main() {
         read_archives: o.read_archives,
         //huge_zip_thres: ((o.huge_zip_thres * 1048576.0) as usize +1024)/4096*4096,
         threads: o.threads,
+        scan_size_min: o.min_size,
     }));
 
     if opts.paths.is_empty() {
@@ -215,6 +216,8 @@ pub struct OptInput {
     pub threads: usize,
     #[structopt(short,long,default_value="2",help="show shadowed files/directory (shadowed are e.g. childs of duplicate dirs) (0-3)\n0: show ALL, including pure shadowed groups\n1: show all except pure shadowed groups\n2: show shadowed only if there is also one non-shadowed in the group\n3: never show shadowed\n")]
     pub shadow_rule: u8,
+    #[structopt(short,long,default_value="0",help="file lower size limit for scanning in bytes")]
+    pub min_size: u64,
 
     #[structopt(short,long,help="spam stderr")]
     pub verbose: bool,
@@ -232,6 +235,7 @@ pub struct OptInput {
     pub read_archives: bool, //TODO: build mode w/o archive support
     #[structopt(long,help="EXPERIMENTAL don't scan and reuse cached data")]
     pub no_scan: bool,
+
     #[structopt(short,long,parse(from_str),default_value="g",help="Results output mode (g/t/d)\ngroups: duplicate entries in sorted size groups\ntree: json as tree\ndiff: like tree, but exact dir comparision, reveals diffs and supersets\n")]
     pub output: OutputMode,
     #[structopt(long,default_value="",help="EXPERIMENTAL")]

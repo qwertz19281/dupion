@@ -15,6 +15,7 @@ pub struct Opts {
     pub archive_cache_mem: usize,
     pub dir_prefetch: bool,
     pub read_archives: bool,
+    pub scan_size_min: u64,
 }
 
 impl Opts {
