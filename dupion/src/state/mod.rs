@@ -116,6 +116,18 @@ impl State {
         self.hashes.get(hash)
             .map_or(0, |e| e.entries.len() )
     }
+
+    /*pub fn find_with_identical_phys(&self, id: VfsId) -> Option<VfsId> {
+        let size = self.tree[id].file_size.unwrap();
+        if let Some(sg) = self.sizes.get(&size) {
+            assert_eq!(sg.size,size);
+            for (t,id) in sg.entries {
+                let f = self.tree[id];
+            }
+        }
+        None
+    }*/
+
     pub fn new(cache_allowed: bool) -> Self {
         Self{
             tree: Vfs::new(),

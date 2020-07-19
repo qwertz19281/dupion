@@ -77,7 +77,7 @@ impl Deduper for BtrfsDedup {
                 let path = &s.tree[id].path;
                 let fd = match FileDescriptor::open(
                     path,
-                    libc::O_RDWR,
+                    libc::O_RDONLY,
                 ) {
                     Ok(v) => v,
                     Err(e) => {
