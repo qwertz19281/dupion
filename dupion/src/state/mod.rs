@@ -57,8 +57,7 @@ impl State {
                 match hashes.entry(hash.clone()) {
                     Entry::Vacant(v) => {
                         v.insert(HashGroup{
-                            entries: vec![id],
-                            typ,
+                            entries: vec![(typ,id)],
                             size,
                             hash: hash.clone(),
                         });
@@ -67,16 +66,16 @@ impl State {
                         let v = v.get_mut();
                         assert_eq!(v.size,size);
                         assert_eq!(v.hash,*hash);
-                        assert_eq!(v.typ,typ);
                         *hash = Arc::clone(&v.hash); //arc clone dedup
-                        if !v.entries.iter().any(|e| *e == id ) {
-                            v.entries.push(id);
+                        if !v.entries.iter().any(|(_,e)| *e == id ) {
+                            v.entries.push((typ,id));
                         }
                     }
                 }
                 Ok(())
             }
             
+            //TODO fix empty hash clash if archive complete read fail at first file
             if file {
                 let size = self.tree[id].file_size.unwrap();
                 infuse(&mut self.hashes,id,size,self.tree[id].file_hash.as_mut().unwrap(),VfsEntryType::File)?;

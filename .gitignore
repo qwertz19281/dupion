@@ -1,3 +1,9 @@
 target
 *.code-workspace
 .vscode
+ee
+ioctl
+rust-btrfs
+dupion_cache
+dupion/ot.html
+dupion/dedupion_cache

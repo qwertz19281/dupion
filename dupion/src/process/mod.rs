@@ -14,8 +14,8 @@ pub fn export(b: &mut State) -> Vec<HashGroup> {
     b.hashes.shrink_to_fit();
     for e in b.hashes.values_mut() {
         e.entries.shrink_to_fit();
-        e.entries.sort_by_key(|&id| 
-            tree[id].path.clone()
+        e.entries.sort_by_key(|(typ,id)| 
+            (typ.order(),tree[*id].path.clone())
         );
     }
 
@@ -24,13 +24,13 @@ pub fn export(b: &mut State) -> Vec<HashGroup> {
         .collect::<Vec<_>>();
 
     v.sort_by_key(|e| {
-        let name = 
+        let (order,name) = 
             e.entries.get(0).map_or(
-                b.tree.static_empty_arc_path.clone(),
-                |&id| b.tree[id].path.clone()
+                (0,b.tree.static_empty_arc_path.clone()),
+                |(typ,id)| (typ.order(),b.tree[*id].path.clone())
             );
-        
-        (Reverse(e.size),e.typ.order(),name)
+
+        (Reverse(e.size),order,name)
     } );
     v
 }

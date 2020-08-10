@@ -10,8 +10,7 @@ pub struct SizeGroup {
 
 #[derive(Clone)]
 pub struct HashGroup {
-    pub entries: Vec<VfsId>,
-    pub typ: VfsEntryType,
+    pub entries: Vec<(VfsEntryType,VfsId)>,
     pub size: Size,
     pub hash: Hash,
 }

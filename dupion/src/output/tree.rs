@@ -102,9 +102,9 @@ impl<'a> Serialize for Dupes<'a> {
     {
         let iter = self.group.entries.iter()
             .take(4)
-            .map(|&id| {
-                let e = &self.state.tree[id];
-                let icon = self.group.typ.icon2(e.is_dir);
+            .map(|(typ,id)| {
+                let e = &self.state.tree[*id];
+                let icon = typ.icon2(e.is_dir);
                 let path = reduce_path(&e.path,self.root_path,self.force_absolute_paths);
                 (format!("{} {}",icon,path),' ')
             });

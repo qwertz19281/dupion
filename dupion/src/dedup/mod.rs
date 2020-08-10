@@ -22,16 +22,16 @@ pub trait Deduper {
         let mut dest: Vec<DedupGroup> = Vec::with_capacity(s.hashes.len());
 
         for e in s.hashes.values() {
-            if e.typ != VfsEntryType::File {continue;}
             if e.size == 0 {continue;} //TODO proper min size option
 
             let mut senpai: Option<VfsId> = e.entries.iter()
-                .find(|&&id| s.tree[id].phys.is_some() && s.tree[id].dedup_state == Some(true) )
+                .find(|(typ,id)| *typ == VfsEntryType::File && s.tree[*id].phys.is_some() && s.tree[*id].dedup_state == Some(true) )
+                .map(|(_,id)| id )
                 .cloned();
 
             let mut candidates: Vec<VfsId> = e.entries.iter()
-                .filter(|&&id| s.tree[id].phys.is_some() && s.tree[id].dedup_state.is_none() )
-                .cloned()
+                .filter(|(typ,id)| *typ == VfsEntryType::File && s.tree[*id].phys.is_some() && s.tree[*id].dedup_state.is_none() )
+                .map(|(_,id)| *id )
                 .collect();
 
             if candidates.is_empty() {continue;}
@@ -63,7 +63,7 @@ pub trait Deduper {
             candidates.retain(|&id| s.tree[id].phys.unwrap() != s.tree[senpai].phys.unwrap() );
             if candidates.is_empty() {continue;}
             candidates.sort_by_key(|&id| s.tree[id].phys.unwrap() );
-            candidates.truncate(512); //TODO real max open file
+            candidates.truncate(511); //TODO real max open file
             candidates.shrink_to_fit();
             
             avg_phys += s.tree[senpai].phys.unwrap();
