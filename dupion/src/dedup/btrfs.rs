@@ -105,10 +105,11 @@ impl Deduper for BtrfsDedup {
             // open all the relevant files
             'g: for group in current.drain(..) {
                 eprintln!(
-                    "\tGroup {}B..{}B -> {}",
+                    "\tGroup {}B..{}B -> {} ({})",
                     SizeFormatterBinary::new(group.range.start),
                     SizeFormatterBinary::new(group.range.end),
-                    opts.path_disp(&s.tree[group.senpai].path)
+                    opts.path_disp(&s.tree[group.senpai].path),
+                    group.dups.len()+1,
                 );
                 let senpai_fd = match open_dup(&group,group.senpai) {
                     Ok(v) => v,
@@ -179,7 +180,13 @@ impl Deduper for BtrfsDedup {
             for (group,senpai_fd,dups_fd) in &opened {
                 assert_eq!(dups_fd.len(),group.dups.len());
                 let senpai_path = &s.tree[group.senpai].path;
-                eprintln!("\tDedup {}B..{}B -> {}",SizeFormatterBinary::new(group.range.start),SizeFormatterBinary::new(group.range.end),opts.path_disp(senpai_path));
+                eprintln!(
+                    "\tDedup {}B..{}B -> {} ({})",
+                    SizeFormatterBinary::new(group.range.start),
+                    SizeFormatterBinary::new(group.range.end),
+                    opts.path_disp(senpai_path),
+                    dups_fd.len()+1,
+                );
 
                 let dest_infos: Vec<_> = dups_fd.iter()
                     .map(|fd| DedupeRangeDestInfo{
