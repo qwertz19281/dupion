@@ -73,6 +73,7 @@ fn main() {
         OutputMode::Groups => print_groups(&sorted, &state, &opts),
         OutputMode::Tree => print_tree(&mut state, &opts),
         OutputMode::Diff => print_treediff(&mut state, &opts),
+        OutputMode::Disabled => {}, //TODO exit before calc and sort
     }
 }
 
@@ -236,7 +237,7 @@ pub struct OptInput {
     #[structopt(long,help="EXPERIMENTAL don't scan and reuse cached data")]
     pub no_scan: bool,
 
-    #[structopt(short,long,parse(from_str),default_value="g",help="Results output mode (g/t/d)\ngroups: duplicate entries in sorted size groups\ntree: json as tree\ndiff: like tree, but exact dir comparision, reveals diffs and supersets\n")]
+    #[structopt(short,long,parse(from_str),default_value="g",help="Results output mode (g/t/d/-)\ngroups: duplicate entries in sorted size groups\ntree: json as tree\ndiff: like tree, but exact dir comparision, reveals diffs and supersets\n-: disabled\n")]
     pub output: OutputMode,
     #[structopt(long,default_value="",help="EXPERIMENTAL")]
     pub dedup: String,
@@ -249,6 +250,7 @@ pub enum OutputMode {
     Groups,
     Tree,
     Diff,
+    Disabled,
 }
 
 impl From<&str> for OutputMode {
@@ -257,6 +259,7 @@ impl From<&str> for OutputMode {
             Some('g') => Self::Groups,
             Some('t') => Self::Tree,
             Some('d') => Self::Diff,
+            Some('-') => Self::Disabled,
             _ => panic!("Invalid output mode"),
         }
     }
