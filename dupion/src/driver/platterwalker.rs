@@ -26,7 +26,7 @@ impl Driver for PlatterWalker {
                 scan.set_order(Order::Content);
                 //scan.set_batchsize(usize::MAX);
 
-                let mut dest = Vec::new();
+                let mut dest = Vec::with_capacity(65536);
                 let mut hash_now = Vec::new();
 
                 for root in &opts.paths {
@@ -104,6 +104,8 @@ impl Driver for PlatterWalker {
                     }
                 }
 
+                dest.shrink_to_fit();
+
                 eprintln!(" Done");
 
                 disp_enabled.store(true, Ordering::Release);
@@ -116,7 +118,7 @@ impl Driver for PlatterWalker {
                 assert!(self.entries.is_some());
 
                 hash_files(
-                    self.entries.clone().unwrap().iter().map(|(_,id)| *id ),
+                    self.entries.as_ref().unwrap().iter().map(|(_,id)| *id ),
                     state,
                     opts,
                     true,
@@ -129,7 +131,7 @@ impl Driver for PlatterWalker {
                 assert!(self.entries.is_some());
 
                 hash_files(
-                    self.entries.take().unwrap().iter().map(|(_,id)| *id ),
+                    self.entries.as_ref().unwrap().iter().map(|(_,id)| *id ),
                     state,
                     opts,
                     false,

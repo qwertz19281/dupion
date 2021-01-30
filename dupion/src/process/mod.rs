@@ -15,7 +15,7 @@ pub fn export(b: &mut State) -> Vec<HashGroup> {
     for e in b.hashes.values_mut() {
         e.entries.shrink_to_fit();
         e.entries.sort_by_key(|(typ,id)| 
-            (typ.order(),tree[*id].path.clone())
+            (typ.order(),&*tree[*id].path)
         );
     }
 
@@ -26,8 +26,8 @@ pub fn export(b: &mut State) -> Vec<HashGroup> {
     v.sort_by_key(|e| {
         let (order,name) = 
             e.entries.get(0).map_or(
-                (0,b.tree.static_empty_arc_path.clone()),
-                |(typ,id)| (typ.order(),b.tree[*id].path.clone())
+                (0,&*b.tree.static_empty_arc_path),
+                |(typ,id)| (typ.order(),&*b.tree[*id].path)
             );
 
         (Reverse(e.size),order,name)
@@ -54,18 +54,17 @@ pub fn calculate_dir_hash(state: &mut State, id: VfsId) -> Result<(Size,Hash),()
     assert!(state.tree[id].is_dir);
     //assert!(sf_size.is_none()); //TODO invalid if archive support
 
-    let mut size = 0;
-    let mut hashes = Vec::new();
-
-    let calced = state.tree[id].childs.clone();
-
-    let calced: Vec<_> = calced.iter()
+    let calced: Vec<VfsId> = state.tree[id].childs.iter()
         .filter(|&&c| state.tree[c].exists() )
+        .cloned()
         .collect();
 
     let calced: Vec<_> = calced.iter()
-        .map(|&&c| (c,calculate_dir_hash(state, c)) )
+        .map(|&c| (c,calculate_dir_hash(state, c)) )
         .collect();
+
+    let mut size = 0;
+    let mut hashes = Vec::with_capacity(calced.len());
 
     for (c,r) in calced {
         let (s,h) = r?;
