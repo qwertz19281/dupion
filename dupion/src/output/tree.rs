@@ -118,8 +118,8 @@ impl<'a> Serialize for DEnum<'a> {
         S: Serializer,
     {
         match self {
-            DEnum::E(v) => v.serialize(serializer),
-            DEnum::D(v) => v.serialize(serializer),
+            Self::E(v) => v.serialize(serializer),
+            Self::D(v) => v.serialize(serializer),
         }
     }
 }
