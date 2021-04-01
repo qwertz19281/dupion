@@ -4,9 +4,9 @@ use std::{marker::PhantomData, path::Path};
 
 use libarchive3_sys::ffi;
 
-use archive::{ArchiveHandle, Handle};
-use entry::BorrowedEntry;
-use error::{ArchiveResult, ArchiveError};
+use crate::archive::{ArchiveHandle, Handle};
+use crate::entry::BorrowedEntry;
+use crate::error::{ArchiveResult, ArchiveError};
 use super::{Builder, Reader};
 
 const BLOCK_SIZE: usize = 10240;

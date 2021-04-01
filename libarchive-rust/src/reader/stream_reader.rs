@@ -6,9 +6,9 @@ use std::{marker::PhantomData, io::{self, Read, Seek, SeekFrom}};
 use libc::{c_void, ssize_t, c_int, int64_t, SEEK_SET, SEEK_CUR, SEEK_END};
 use libarchive3_sys::ffi;
 
-use archive::{ArchiveHandle, Handle};
-use entry::BorrowedEntry;
-use error::{ArchiveResult, ArchiveError};
+use crate::archive::{ArchiveHandle, Handle};
+use crate::entry::BorrowedEntry;
+use crate::error::{ArchiveResult, ArchiveError};
 use super::{Builder, Reader};
 
 pub struct StreamReader<'r,T> where T: 'r {
@@ -127,7 +127,7 @@ unsafe extern "C" fn stream_seek_callback<T: Seek>(handle: *mut ffi::Struct_arch
     match pipe.seek(pos) {
         Ok(new_pos) => new_pos as int64_t,
         Err(e) => {
-            let desc = CString::new(e.description()).unwrap();
+            let desc = CString::new(format!("{}",e)).unwrap();
             ffi::archive_set_error(handle, e.raw_os_error().unwrap_or(0), desc.as_ptr());
             ffi::ARCHIVE_FATAL as int64_t
         }

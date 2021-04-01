@@ -7,7 +7,7 @@ use libarchive3_sys::ffi;
 
 pub use self::archive_handle::ArchiveHandle;
 #[deprecated(note="Use entry::Entry directly instead.")]
-pub use entry::Entry;
+pub use crate::entry::Entry;
 pub use self::handle::Handle;
 
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord, Debug, Hash)]

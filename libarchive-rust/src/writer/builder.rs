@@ -4,9 +4,9 @@ use std::{marker::PhantomData, ffi::CString};
 
 use libarchive3_sys::ffi;
 
-use archive::{ArchiveHandle, Handle, WriteFilter, WriteFormat};
-use error::{ArchiveResult, ArchiveError};
-use writer::writer::Writer;
+use crate::archive::{ArchiveHandle, Handle, WriteFilter, WriteFormat};
+use crate::error::{ArchiveResult, ArchiveError};
+use crate::writer::writer::Writer;
 
 pub struct Builder<'r> {
     handle: ArchiveHandle<'r>,

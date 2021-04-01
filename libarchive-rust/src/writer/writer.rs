@@ -1,6 +1,6 @@
 use libarchive3_sys::ffi;
 
-use archive::{ArchiveHandle, Handle};
+use crate::archive::{ArchiveHandle, Handle};
 use std::marker::PhantomData;
 
 pub struct Writer<'r> {

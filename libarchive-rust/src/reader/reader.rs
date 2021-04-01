@@ -4,12 +4,12 @@ use std::slice;
 use libc::{off_t, size_t};
 use libarchive3_sys::ffi;
 
-use archive::Handle;
-use entry::{Entry, BorrowedEntry, OwnedEntry};
-use error::{ArchiveResult, ArchiveError};
+use crate::archive::Handle;
+use crate::entry::{Entry, BorrowedEntry, OwnedEntry};
+use crate::error::{ArchiveResult, ArchiveError};
 
 #[deprecated(note="Use BorrowedEntry directly instead.")]
-pub use entry::BorrowedEntry as ReaderEntry;
+pub use crate::entry::BorrowedEntry as ReaderEntry;
 
 pub trait Reader<'r>: Handle<'r> {
     fn entry(&mut self) -> &mut BorrowedEntry;

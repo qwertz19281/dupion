@@ -6,8 +6,8 @@ use std::{marker::PhantomData, path::Path};
 
 use libarchive3_sys::ffi;
 
-use archive::{ArchiveHandle, ReadCompression, ReadFilter, ReadFormat, Handle};
-use error::ArchiveResult;
+use crate::archive::{ArchiveHandle, ReadCompression, ReadFilter, ReadFormat, Handle};
+use crate::error::ArchiveResult;
 use super::{FileReader, StreamReader};
 
 pub struct Builder<'r> {
