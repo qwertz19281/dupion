@@ -5,12 +5,23 @@ use rustc_hash::FxHashMap;
 
 use crate::opts::Opts;
 use crate::state::State;
+use crate::util::Size;
 use crate::vfs::{Vfs, VfsId};
 
 pub fn print_subsetion(state: &mut State, opts: &Opts) {
+    // relationion requires sorted entries
     sort_em(&mut state.tree);
 
+    // store the superset/equal relations/matches
     let mut matches = SMatches(FxHashMap::with_capacity_and_hasher(state.tree.entries.len(),Default::default()));
+
+    // calculate_dir_hash doesn't calculate size or hash for unique dirs, but we also need size for unique dirs
+    for i in 0..state.tree.entries.len() {
+        let i = VfsId{evil_inner:i};
+        if state.tree[i].is_dir && state.tree[i].dir_size.is_none() {
+            let _ = calculate_dir_size(state, i);
+        }
+    }
 
     let candis: Vec<VfsId> = state.tree.entries.iter()
         .enumerate()
@@ -20,15 +31,17 @@ pub fn print_subsetion(state: &mut State, opts: &Opts) {
         .map(|(i,_)| VfsId{evil_inner:i} )
         .collect();
 
+    // compare dirs together
     all_to_all(&candis, |a,b| {comp_dirs(*a,*b,&mut matches,state);} );
 
     drop(candis);
 
     let mut matches: Vec<SMatch> = matches.0.values()
-        .filter(|s| s.is_shadowed() )
+        .filter(|s| !s.is_shadowed() )
         .cloned()
         .collect();
 
+    // sort the results by dir size
     matches.sort_by_key(|s| Reverse(match s {
         SMatch::Eq(a,_,_) => state.tree[*a].dir_size.unwrap_or(0),
         SMatch::Super(a,b,_) => 
@@ -38,20 +51,24 @@ pub fn print_subsetion(state: &mut State, opts: &Opts) {
     for m in matches {
         match m {
             SMatch::Eq(a,b,_) => eprintln!(
-                "\t{} == {}",
+                "\t{} == {} ({})",
                 opts.path_disp(&*state.tree[a].path),
                 opts.path_disp(&*state.tree[b].path),
+                state.tree[a].dir_size.unwrap_or(0),
             ),
             SMatch::Super(a,b,_) => eprintln!(
-                "\t{} >> {}",
+                "\t{} >> {} ({})",
                 opts.path_disp(&*state.tree[a].path),
                 opts.path_disp(&*state.tree[b].path),
+                state.tree[a].dir_size.unwrap_or(0).min( state.tree[b].dir_size.unwrap_or(0) ),
             ),
         }
     }
 }
 
+// compare dirs and store result (relation none/superset/equal) to matches
 pub fn comp_dirs(a: VfsId, b: VfsId, matches: &mut SMatches, state: &mut State) -> Ordr {
+    // attempt to skip if these dirs are already compared
     if let Some(m) = matches.get(a,b) {
         match m {
             SMatch::Eq(aa,bb,_) => {
@@ -81,6 +98,7 @@ pub fn comp_dirs(a: VfsId, b: VfsId, matches: &mut SMatches, state: &mut State) 
     let a_iter = state.tree[a].childs.clone();
     let b_iter = state.tree[b].childs.clone();
 
+    // compares a child
     let cmp_fn = |a,b| -> Ordr {
         let aa = &state.tree[a];
         let bb = &state.tree[b];
@@ -88,6 +106,7 @@ pub fn comp_dirs(a: VfsId, b: VfsId, matches: &mut SMatches, state: &mut State) 
         let aname = aa.path.file_name();
         let bname = bb.path.file_name();
 
+        // fail if filenames aren't equal
         if let (Some(a),Some(b)) = (aname,bname) {
             if a != b {
                 return Ordr::Nope;
@@ -99,6 +118,7 @@ pub fn comp_dirs(a: VfsId, b: VfsId, matches: &mut SMatches, state: &mut State) 
         if newer_mode {
             todo!()
         } else {
+            // check if file/dir hash are equal
             if let (Some(al),Some(ah),Some(bl),Some(bh)) = (aa.file_size,aa.file_hash.as_ref(),bb.file_size,bb.file_hash.as_ref()) {
                 if al == bl && ah == bh {
                     return Ordr::Eq;
@@ -109,12 +129,15 @@ pub fn comp_dirs(a: VfsId, b: VfsId, matches: &mut SMatches, state: &mut State) 
             }
             if let (Some(al),Some(ah),Some(bl),Some(bh)) = (aa.dir_size,aa.dir_hash.as_ref(),bb.dir_size,bb.dir_hash.as_ref()) {
                 if al == bl && ah == bh {
+                    shadow_candidates.push((a,b));
                     return Ordr::Eq;
                 }
             }
             if let (Some(0),Some(0)) = (aa.dir_size,bb.dir_size) {
+                shadow_candidates.push((a,b));
                 return Ordr::Eq;
             }
+            // if they're dirs, compare them
             match (aa.is_dir,bb.is_dir) {
                 (true,true) => {
                     shadow_candidates.push((a,b));
@@ -150,14 +173,13 @@ pub fn comp_dirs(a: VfsId, b: VfsId, matches: &mut SMatches, state: &mut State) 
     o
 }
 
-// find super dirs containing anything contained by subdir and more
-// - superdir always contains more or equal files as subdir
-
+// check if the contents of a and b are equal or sub/superset
 pub fn relationion<T: Copy>(
     mut a: impl ExactSizeIterator<Item=T>,
     mut b: impl ExactSizeIterator<Item=T>,
     mut cmp: impl FnMut(T,T) -> Ordr,
 ) -> Ordr {
+    // if a/b are potential superset
     let mut a_pot = false;
     let mut b_pot = false;
     let mut eq_len = false;
@@ -207,12 +229,6 @@ pub fn relationion<T: Copy>(
             }
         } else if let (Some(aa),None) = (a_cur,b_cur) {
             // only a_pot, else fail with no match, take a
-            /*match (a_pot,b_pot) {
-                (false,false) => return Ordr::Eq, //a_pot = true; a=next
-                (true,false) => return Ordr::Super, //a=next
-                (false,true) => return Ordr::Sub, //return Nope
-                _ => unreachable!(),
-            }*/
             if b_pot {
                 return Ordr::Nope;
             }
@@ -319,6 +335,7 @@ impl SMatch {
     }
 }
 
+#[derive(Debug)]
 pub enum Ordr {
     Nope,
     Super,
@@ -344,4 +361,42 @@ pub fn sort_em(a: &mut Vfs) {
         });
         a.entries[i].childs = v;
     }
+}
+
+pub fn calculate_dir_size(state: &mut State, id: VfsId) -> Result<Size,()> {
+    if state.tree[id].is_file && !state.tree[id].is_dir {
+        let size = state.tree[id].file_size;
+        assert!(size.is_some());
+        return Ok(size.ok_or(())?);
+    }
+    if !state.tree[id].is_dir {
+        return Err(());
+    }
+
+    assert!(state.tree[id].is_dir);
+
+    let calced: Vec<VfsId> = state.tree[id].childs.iter()
+        .filter(|&&c| state.tree[c].exists() )
+        .cloned()
+        .collect();
+
+    let calced: Vec<_> = calced.iter()
+        .map(|&c| calculate_dir_size(state, c) )
+        .collect();
+
+    let mut size = 0;
+
+    for r in calced {
+        size += r?;
+    }
+
+    state.tree[id].dir_size = Some(size);
+
+    if state.tree[id].is_file {
+        let size = state.tree[id].file_size;
+        assert!(size.is_some());
+        return Ok(size.unwrap());
+    }
+
+    Ok(size)
 }

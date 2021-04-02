@@ -1,3 +1,4 @@
+use dupion::output::subsetion::print_subsetion;
 use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{export, calculate_dir_hash, find_shadowed}, util::*, vfs::VfsId, zip::setlocale_hack, output::{tree::print_tree, groups::print_groups, treediff::print_treediff}, dedup::{Deduper, btrfs::BtrfsDedup}};
 use std::{time::Duration, sync::{atomic::Ordering}, path::PathBuf, io::Write};
 use size_format::SizeFormatterBinary;
@@ -73,6 +74,7 @@ fn main() {
         OutputMode::Groups => print_groups(&sorted, &state, &opts),
         OutputMode::Tree => print_tree(&mut state, &opts),
         OutputMode::Diff => print_treediff(&mut state, &opts),
+        OutputMode::Subset => print_subsetion(&mut state, &opts),
         OutputMode::Disabled => {}, //TODO exit before calc and sort
     }
 }
@@ -250,6 +252,7 @@ pub enum OutputMode {
     Groups,
     Tree,
     Diff,
+    Subset,
     Disabled,
 }
 
@@ -259,6 +262,7 @@ impl From<&str> for OutputMode {
             Some('g') => Self::Groups,
             Some('t') => Self::Tree,
             Some('d') => Self::Diff,
+            Some('s') => Self::Subset,
             Some('-') => Self::Disabled,
             _ => panic!("Invalid output mode"),
         }
