@@ -11,6 +11,11 @@ members = [
 codegen-units = 1
 lto = true
 
+[profile.dev]
+opt-level = 3
+codegen-units = 4
+overflow-checks = false
+
 [profile.release.package.proc-macro2]
 opt-level = 0
 [profile.release.package.quote]
@@ -19,3 +24,13 @@ opt-level = 0
 opt-level = 0
 [profile.release.package.serde_derive]
 opt-level = 0
+
+[profile.dev.package.proc-macro2]
+opt-level = 0
+[profile.dev.package.quote]
+opt-level = 0
+[profile.dev.package.syn]
+opt-level = 0
+[profile.dev.package.serde_derive]
+opt-level = 0
+

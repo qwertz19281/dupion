@@ -20,8 +20,9 @@ base64 = "0.13"
 libc = ">=0.2.70"
 parking_lot = "0.11"
 num_cpus = "1.13"
-sysinfo = "0.15"
+sysinfo = "0.16"
 btrfs2 = "1.2.2"
+rustc-hash = "1"
 
 [dependencies.maligned]
 version = "0.2"
