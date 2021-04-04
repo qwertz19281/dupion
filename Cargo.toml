@@ -14,7 +14,7 @@ lto = true
 [profile.dev]
 opt-level = 3
 codegen-units = 4
-overflow-checks = false
+overflow-checks = true
 
 [profile.release.package.proc-macro2]
 opt-level = 0

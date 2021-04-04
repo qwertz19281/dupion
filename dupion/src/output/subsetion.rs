@@ -1,7 +1,9 @@
 use std::cmp::Reverse;
 use std::collections::hash_map::Entry;
+use std::hash::{Hash, Hasher};
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
+use size_format::SizeFormatterBinary;
 
 use crate::opts::Opts;
 use crate::state::State;
@@ -9,11 +11,17 @@ use crate::util::Size;
 use crate::vfs::{Vfs, VfsId};
 
 pub fn print_subsetion(state: &mut State, opts: &Opts) {
+    // remove unused hashmaps to save memory
+    state.hashes = Default::default();
+    state.sizes = Default::default();
+
     // relationion requires sorted entries
     sort_em(&mut state.tree);
 
     // store the superset/equal relations/matches
     let mut matches = SMatches(FxHashMap::with_capacity_and_hasher(state.tree.entries.len(),Default::default()));
+
+    let mut subs: FxHashSet<usize> = FxHashSet::with_capacity_and_hasher(state.tree.entries.len(),Default::default());
 
     // calculate_dir_hash doesn't calculate size or hash for unique dirs, but we also need size for unique dirs
     for i in 0..state.tree.entries.len() {
@@ -23,16 +31,18 @@ pub fn print_subsetion(state: &mut State, opts: &Opts) {
         }
     }
 
+    // collect which dirs would be included in all-to-all compare ()
     let candis: Vec<VfsId> = state.tree.entries.iter()
         .enumerate()
+        .skip(1) // root can't be compared with any dir
         .filter(|(_,e)| e.is_dir )
-        .filter(|(_,e)| e.childs.len() != 0 )
-        .filter(|(_,e)| e.dir_size.unwrap_or(0) != 0 )
+        .filter(|(_,e)| e.childs.len() != 0 ) // exclude empty dirs
+        .filter(|(_,e)| e.dir_size.unwrap_or(0) >= 16384 ) // exclude small dirs
         .map(|(i,_)| VfsId{evil_inner:i} )
         .collect();
 
     // compare dirs together
-    all_to_all(&candis, |a,b| {comp_dirs(*a,*b,&mut matches,state);} );
+    all_to_all(&candis, |a,b| if comp_rule(*a,*b,state) {comp_dirs(*a,*b,&mut matches,&mut subs,false,state);} );
 
     drop(candis);
 
@@ -51,23 +61,30 @@ pub fn print_subsetion(state: &mut State, opts: &Opts) {
     for m in matches {
         match m {
             SMatch::Eq(a,b,_) => eprintln!(
-                "\t{} == {} ({})",
+                "{:>8}B  {} == {}",
+                format!("{}",SizeFormatterBinary::new(state.tree[a].dir_size.unwrap_or(0))),
                 opts.path_disp(&*state.tree[a].path),
                 opts.path_disp(&*state.tree[b].path),
-                state.tree[a].dir_size.unwrap_or(0),
             ),
             SMatch::Super(a,b,_) => eprintln!(
-                "\t{} >> {} ({})",
+                "{:>8}B  {} >> {}",
+                format!("{}",SizeFormatterBinary::new(state.tree[a].dir_size.unwrap_or(0).min( state.tree[b].dir_size.unwrap_or(0) ))),
                 opts.path_disp(&*state.tree[a].path),
                 opts.path_disp(&*state.tree[b].path),
-                state.tree[a].dir_size.unwrap_or(0).min( state.tree[b].dir_size.unwrap_or(0) ),
             ),
         }
     }
 }
 
 // compare dirs and store result (relation none/superset/equal) to matches
-pub fn comp_dirs(a: VfsId, b: VfsId, matches: &mut SMatches, state: &mut State) -> Ordr {
+pub fn comp_dirs(
+    a: VfsId,
+    b: VfsId,
+    matches: &mut SMatches,
+    subs: &mut FxHashSet<usize>,
+    do_subs: bool,
+    state: &State
+) -> Ordr {
     // attempt to skip if these dirs are already compared
     if let Some(m) = matches.get(a,b) {
         match m {
@@ -95,23 +112,53 @@ pub fn comp_dirs(a: VfsId, b: VfsId, matches: &mut SMatches, state: &mut State) 
 
     let mut shadow_candidates: Vec<(VfsId,VfsId)> = Vec::with_capacity(max_len);
 
-    let a_iter = state.tree[a].childs.clone();
-    let b_iter = state.tree[b].childs.clone();
+    let a_iter = &state.tree[a].childs[..];
+    let b_iter = &state.tree[b].childs[..];
+
+    if do_subs {
+        if a_iter.len() > b_iter.len() {
+            if subs.contains(&a.evil_inner) {
+                return Ordr::Nope;
+            }
+        }
+        if a_iter.len() < b_iter.len() {
+            if subs.contains(&b.evil_inner) {
+                return Ordr::Nope;
+            }
+        }
+    }
 
     // compares a child
     let cmp_fn = |a,b| -> Ordr {
         let aa = &state.tree[a];
         let bb = &state.tree[b];
 
-        let aname = aa.path.file_name();
-        let bname = bb.path.file_name();
+        if !newer_mode {
+            if aa.is_dir != bb.is_dir {
+                return Ordr::Nope;
+            }
+            if let (Some(al),Some(bl)) = (aa.file_size,bb.file_size) {
+                if al != bl {
+                    return Ordr::Nope;
+                }
+            }
+            if let (Some(al),Some(bl)) = (aa.dir_size,bb.dir_size) {
+                if al != bl {
+                    return Ordr::Nope;
+                }
+            }
+        }
 
-        // fail if filenames aren't equal
-        if let (Some(a),Some(b)) = (aname,bname) {
+        /*if let (Some(a),Some(b)) = (aa.phys,bb.phys) {
             if a != b {
                 return Ordr::Nope;
             }
         } else {
+            panic!()
+        }*/
+
+        // fail if filenames aren't equal
+        if aa.plc != bb.plc {
             return Ordr::Nope;
         }
 
@@ -141,7 +188,7 @@ pub fn comp_dirs(a: VfsId, b: VfsId, matches: &mut SMatches, state: &mut State) 
             match (aa.is_dir,bb.is_dir) {
                 (true,true) => {
                     shadow_candidates.push((a,b));
-                    comp_dirs(a,b,matches,state)
+                    comp_dirs(a,b,matches,subs,false,state)
                 },
                 _ => Ordr::Nope,
             }
@@ -149,10 +196,16 @@ pub fn comp_dirs(a: VfsId, b: VfsId, matches: &mut SMatches, state: &mut State) 
     };
 
     let o = relationion(
-        a_iter.into_iter(),
-        b_iter.into_iter(),
+        a_iter.into_iter().cloned(),
+        b_iter.into_iter().cloned(),
         cmp_fn,
     );
+
+    /*match o {
+        Ordr::Super => {subs.insert(b.evil_inner);},
+        Ordr::Sub => {subs.insert(a.evil_inner);},
+        _ => {},
+    }*/
 
     match o {
         Ordr::Eq => matches.set_eq(a, b),
@@ -295,7 +348,7 @@ impl SMatches {
                     }
                     e.insert(SMatch::Super(sup,sub,true));
                 } else {
-                    panic!();
+                    //panic!();
                 }
             }
         }
@@ -399,4 +452,15 @@ pub fn calculate_dir_size(state: &mut State, id: VfsId) -> Result<Size,()> {
     }
 
     Ok(size)
+}
+
+// don't compare dirs if one is >8x bigger
+pub fn comp_rule(a: VfsId, b: VfsId, state: &State) -> bool {
+    let aa = state.tree[a].dir_size.unwrap_or(0);
+    let bb = state.tree[b].dir_size.unwrap_or(0);
+
+    let min = aa.min(bb);
+    let max = aa.max(bb);
+
+    min * 8 >= max
 }
