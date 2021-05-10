@@ -1,7 +1,8 @@
 use super::*;
+use rustc_hash::FxHashMap;
 use util::*;
 use vfs::{VfsId, Vfs, entry::VfsEntryType};
-use std::{collections::{HashMap, hash_map::Entry}, sync::Arc};
+use std::{collections::hash_map::Entry, sync::Arc};
 use group::{HashGroup, SizeGroup};
 use opts::Opts;
 
@@ -130,8 +131,8 @@ impl State {
     pub fn new(cache_allowed: bool) -> Self {
         Self{
             tree: Vfs::new(),
-            sizes: HashMap::with_capacity(16384),
-            hashes: HashMap::with_capacity(16384),
+            sizes: FxHashMap::with_capacity_and_hasher(16384, Default::default()),
+            hashes: FxHashMap::with_capacity_and_hasher(16384, Default::default()),
             cache_allowed,
         }
     }

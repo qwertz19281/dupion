@@ -2,7 +2,7 @@ use std::ffi::CStr;
 use std::str;
 
 use libarchive3_sys::ffi;
-use error::ErrCode;
+use crate::error::ErrCode;
 
 pub trait Handle<'r> {
     unsafe fn handle(&self) -> &mut ffi::Struct_archive;

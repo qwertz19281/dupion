@@ -1,5 +1,5 @@
 use super::*;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use sha2::digest::generic_array::GenericArray;
 use sha2::digest::generic_array::typenum::U64;
 use group::{SizeGroup, HashGroup};
@@ -13,8 +13,8 @@ use maligned::A4096;
 pub type Size = u64;
 pub type Hash = Arc<GenericArray<u8,U64>>;
 
-pub type Sizes = HashMap<Size,SizeGroup>;
-pub type Hashes = HashMap<Hash,HashGroup>;
+pub type Sizes = rustc_hash::FxHashMap<Size,SizeGroup>;
+pub type Hashes = rustc_hash::FxHashMap<Hash,HashGroup>;
 
 pub static disp_found_bytes: AtomicU64 = AtomicU64::new(0);
 pub static disp_found_files: AtomicU64 = AtomicU64::new(0);

@@ -4,11 +4,9 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
-extern crate btrfs2 as btrfs;
-extern crate mnt;
-extern crate libc;
 
-use btrfs::{get_file_extent_map, linux::{get_file_extent_map_for_path, FileExtent}, FileDescriptor};
+use btrfs2::{get_file_extent_map, linux::{get_file_extent_map_for_path, FileExtent}, FileDescriptor};
+use rustc_hash::FxHashMap;
 use std::fs::*;
 use std::os::unix::fs::DirEntryExt;
 use std::path::PathBuf;
@@ -82,7 +80,7 @@ pub struct ToScan<D> where D: Default {
     phase: Phase,
     order: Order,
     batch_size: usize,
-    prefetched: HashMap<PathBuf, u64>,
+    prefetched: FxHashMap<PathBuf, u64>,
     mountpoints: Vec<mnt::MountEntry>,
     prefetch_cap: usize
 }
@@ -118,7 +116,7 @@ impl<D> ToScan<D> where D: Default {
             phase: Phase::DirWalk,
             batch_size: 1024,
             prefilter: None,
-            prefetched: Default::default(),
+            prefetched: FxHashMap::default(),
             mountpoints: vec![],
             prefetch_cap: 0
         }
@@ -217,7 +215,7 @@ impl<D> ToScan<D> where D: Default {
         let mut prune = vec![];
 
         {
-            let mut device_groups = HashMap::new();
+            let mut device_groups = FxHashMap::default();
 
             for e in unordered_iter.chain(ordered_iter_front).chain(ordered_iter_tail) {
                 if remaining == 0 {
