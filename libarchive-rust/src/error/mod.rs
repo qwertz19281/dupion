@@ -1,6 +1,6 @@
 use std::error;
 use std::fmt;
-use archive;
+use crate::archive;
 
 pub type ArchiveResult<T> = Result<T, ArchiveError>;
 
@@ -22,8 +22,8 @@ pub enum ArchiveError {
 impl error::Error for ArchiveError {
     fn description(&self) -> &str {
         match self {
-            &ArchiveError::HeaderPosition => "Header position expected to be 0",
-            &ArchiveError::Sys(_, _) => "libarchive system error",
+            &Self::HeaderPosition => "Header position expected to be 0",
+            &Self::Sys(_, _) => "libarchive system error",
         }
     }
 }
@@ -31,8 +31,8 @@ impl error::Error for ArchiveError {
 impl fmt::Display for ArchiveError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &ArchiveError::HeaderPosition => write!(fmt, "Header position expected to be 0"),
-            &ArchiveError::Sys(ref code, ref msg) => {
+            &Self::HeaderPosition => write!(fmt, "Header position expected to be 0"),
+            &Self::Sys(ref code, ref msg) => {
                 if let &Some(ref msg) = msg {
                     write!(fmt, "{} (libarchive err_code={})", msg, code)
                 } else {
@@ -43,14 +43,14 @@ impl fmt::Display for ArchiveError {
     }
 }
 
-impl<'a,'r> From<&'a archive::Handle<'r>> for ArchiveError {
-    fn from(handle: &'a archive::Handle) -> ArchiveError {
+impl<'a,'r> From<&'a dyn archive::Handle<'r>> for ArchiveError {
+    fn from(handle: &'a dyn archive::Handle) -> ArchiveError {
         ArchiveError::Sys(handle.err_code(), handle.err_msg())
     }
 }
 
-impl<'a,'r> From<&'a archive::Handle<'r>> for ArchiveResult<()> {
-    fn from(handle: &'a archive::Handle) -> ArchiveResult<()> {
+impl<'a,'r> From<&'a dyn archive::Handle<'r>> for ArchiveResult<()> {
+    fn from(handle: &'a dyn archive::Handle) -> ArchiveResult<()> {
         match handle.err_code() {
             ErrCode(0) => Ok(()),
             _ => Err(ArchiveError::from(handle)),

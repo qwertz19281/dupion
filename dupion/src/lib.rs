@@ -11,4 +11,6 @@ pub mod opts;
 pub mod util;
 pub mod group;
 pub mod process;
+pub mod output;
 pub mod zip;
+pub mod dedup;

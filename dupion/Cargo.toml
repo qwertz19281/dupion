@@ -1,6 +1,6 @@
 [package]
 name = "dupion"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["qwertz19281 <dellen903@gmail.com>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
@@ -16,11 +16,16 @@ structopt = "0.3"
 serde_json = "1.0"
 serde = "1.0"
 serde_derive = "1.0"
-base64 = "0.12"
+base64 = "0.13"
 libc = ">=0.2.70"
 parking_lot = "0.11"
 num_cpus = "1.13"
-sysinfo = "0.14"
+sysinfo = "0.15"
+btrfs2 = "1.2.2"
+
+[dependencies.maligned]
+version = "0.2"
+features = ["align-4k"]
 
 [dependencies.platter-walk]
 path = "../platter-walk"

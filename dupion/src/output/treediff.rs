@@ -1,6 +1,4 @@
 use super::*;
-use serde::{Serialize, Serializer};
-use std::path::{PathBuf, Path};
 
 pub struct TreeRoot<'a> {
     state: &'a State,
@@ -45,14 +43,14 @@ impl<'a> Serialize for DirEntry<'a> {
     {
         assert!(self.state.tree[self.id].exists());
         let mut childion = self.state.tree[self.id].childs.iter()
-            .filter(|cid| self.state.tree[**cid].exists() )
-            .map(|cid| {
-                let dup = self.state.tree[*cid].treediff_stat;
-                //eprintln!("{}",self.state.tree[*cid].path.to_str().unwrap());
-                let name = self.state.tree[*cid].path.file_name().unwrap().to_str().unwrap();
-                let size = self.state.tree[*cid].file_or_dir_props().0.unwrap_or(0);
-                let ip = self.state.tree[*cid].icon_prio2();
-                (dup,*cid,size,ip,name)
+            .filter(|&&cid| self.state.tree[cid].exists() )
+            .map(|&cid| {
+                let dup = self.state.tree[cid].treediff_stat;
+                //eprintln!("{}",self.state.tree[cid].path.to_str().unwrap());
+                let name = self.state.tree[cid].path.file_name().unwrap().to_str().unwrap();
+                let size = self.state.tree[cid].file_or_dir_props().0.unwrap_or(0);
+                let ip = self.state.tree[cid].icon_prio2();
+                (dup,cid,size,ip,name)
             })
             .collect::<Vec<_>>();
         
@@ -140,7 +138,7 @@ pub fn reduce_path<'a>(path: &'a Path, root_path: &Path, force_absolute_paths: b
     }
 }
 
-pub fn printion_treediff(state: &mut State, opts: &Opts) {
+pub fn print_treediff(state: &mut State, opts: &Opts) {
     let roots = opts.paths.iter()
         .map(|p| state.tree.cid(p).unwrap() )
         .collect::<Vec<_>>();

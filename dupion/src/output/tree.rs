@@ -1,6 +1,4 @@
 use super::*;
-use serde::{Serialize, Serializer};
-use std::path::{PathBuf, Path};
 
 pub struct TreeRoot<'a> {
     state: &'a State,
@@ -31,13 +29,13 @@ impl<'a> Serialize for TreeRoot<'a> {
         S: Serializer,
     {
         let iter = self.roots.iter()
-            .filter(|id| self.state.tree[**id].exists() )
-            .map(|id| {
-                let path = &self.state.tree[*id].path;
+            .filter(|&&id| self.state.tree[id].exists() )
+            .map(|&id| {
+                let path = &self.state.tree[id].path;
                 let name = reduce_path(path,path,true);
                 (name,DirEntry{
                     state: self.state,
-                    id: *id,
+                    id: id,
                     root_path: path,
                     force_absolute_paths: self.force_absolute_paths,
                 })
@@ -53,17 +51,17 @@ impl<'a> Serialize for DirEntry<'a> {
     {
         assert!(self.state.tree[self.id].exists());
         let mut childion = self.state.tree[self.id].childs.iter()
-            .filter(|cid| self.state.tree[**cid].exists() )
-            .map(|cid| {
-                let (s,h) = self.state.tree[*cid].file_or_dir_props();
+            .filter(|&&cid| self.state.tree[cid].exists() )
+            .map(|&cid| {
+                let (s,h) = self.state.tree[cid].file_or_dir_props();
                 let mut dups = 0;
                 if let Some(h) = h {
                     dups = self.state.num_hashes(&h);
                     assert!(dups != 0);
                 }
-                //eprintln!("{}",self.state.tree[*cid].path.to_str().unwrap());
-                let ip = self.state.tree[*cid].icon_prio2();
-                (dups,*cid,s.unwrap_or(0),ip)
+                //eprintln!("{}",self.state.tree[cid].path.to_str().unwrap());
+                let ip = self.state.tree[cid].icon_prio2();
+                (dups,cid,s.unwrap_or(0),ip)
             })
             .collect::<Vec<_>>();
         
@@ -104,9 +102,9 @@ impl<'a> Serialize for Dupes<'a> {
     {
         let iter = self.group.entries.iter()
             .take(4)
-            .map(|(t,id)| {
+            .map(|(typ,id)| {
                 let e = &self.state.tree[*id];
-                let icon = t.icon2(e.is_dir);
+                let icon = typ.icon2(e.is_dir);
                 let path = reduce_path(&e.path,self.root_path,self.force_absolute_paths);
                 (format!("{} {}",icon,path),' ')
             });
@@ -120,8 +118,8 @@ impl<'a> Serialize for DEnum<'a> {
         S: Serializer,
     {
         match self {
-            DEnum::E(v) => v.serialize(serializer),
-            DEnum::D(v) => v.serialize(serializer),
+            Self::E(v) => v.serialize(serializer),
+            Self::D(v) => v.serialize(serializer),
         }
     }
 }
@@ -134,7 +132,7 @@ pub fn reduce_path<'a>(path: &'a Path, root_path: &Path, force_absolute_paths: b
     }
 }
 
-pub fn printion_tree(state: &State, opts: &Opts) {
+pub fn print_tree(state: &State, opts: &Opts) {
     let roots = opts.paths.iter()
         .map(|p| state.tree.cid(p).unwrap() )
         .collect::<Vec<_>>();

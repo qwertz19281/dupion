@@ -1,26 +1,29 @@
 use super::*;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 use sha2::digest::generic_array::GenericArray;
 use sha2::digest::generic_array::typenum::U64;
 use group::{SizeGroup, HashGroup};
-use std::{io::{Seek, Read}, sync::{atomic::{Ordering, AtomicUsize, AtomicBool}}, time::Duration, ops::{DerefMut, Deref}};
+use std::{io::{Seek, Read}, sync::{atomic::{Ordering, AtomicUsize, AtomicBool, AtomicU64}}, time::Duration, ops::{DerefMut, Deref}};
 use parking_lot::RawMutex;
 use parking_lot::lock_api::RawMutex as _;
 use sysinfo::*;
+use maligned::align_first;
+use maligned::A4096;
 
 pub type Size = u64;
 pub type Hash = Arc<GenericArray<u8,U64>>;
 
-pub type Sizes = HashMap<Size,SizeGroup>;
-pub type Hashes = HashMap<Hash,HashGroup>;
+pub type Sizes = rustc_hash::FxHashMap<Size,SizeGroup>;
+pub type Hashes = rustc_hash::FxHashMap<Hash,HashGroup>;
 
-pub static disp_found_bytes: AtomicUsize = AtomicUsize::new(0);
-pub static disp_found_files: AtomicUsize = AtomicUsize::new(0);
-pub static disp_relevant_bytes: AtomicUsize = AtomicUsize::new(0);
-pub static disp_relevant_files: AtomicUsize = AtomicUsize::new(0);
-pub static disp_processed_bytes: AtomicUsize = AtomicUsize::new(0);
-pub static disp_processed_files: AtomicUsize = AtomicUsize::new(0);
-pub static disp_prev: AtomicUsize = AtomicUsize::new(0);
+pub static disp_found_bytes: AtomicU64 = AtomicU64::new(0);
+pub static disp_found_files: AtomicU64 = AtomicU64::new(0);
+pub static disp_relevant_bytes: AtomicU64 = AtomicU64::new(0);
+pub static disp_relevant_files: AtomicU64 = AtomicU64::new(0);
+pub static disp_processed_bytes: AtomicU64 = AtomicU64::new(0);
+pub static disp_processed_files: AtomicU64 = AtomicU64::new(0);
+pub static disp_deduped_bytes: AtomicU64 = AtomicU64::new(u64::MAX);
+pub static disp_prev: AtomicU64 = AtomicU64::new(0);
 pub static disp_enabled: AtomicBool = AtomicBool::new(false);
 pub static vfs_store_notif: AtomicBool = AtomicBool::new(false);
 pub static alloc_mon: AtomicUsize = AtomicUsize::new(0);
@@ -91,13 +94,13 @@ pub struct AllocMonBuf(Vec<u8>);
 
 impl AllocMonBuf {
     pub fn new(size: usize, alloc_thresh: usize) -> Self {
-        while alloc_mon.load(Ordering::Acquire)+size as usize > alloc_thresh {
+        while alloc_mon.load(Ordering::Acquire)+size > alloc_thresh {
             std::thread::sleep(Duration::from_millis(50));
         }
-        let buf = vec![0;size as usize];
+        let buf = align_first::<_,A4096>(size);
         assert_eq!(buf.len(),size);
         assert_eq!(buf.capacity(),size);
-        alloc_mon.fetch_add(size as usize, Ordering::AcqRel);
+        alloc_mon.fetch_add(size, Ordering::AcqRel);
         Self(buf)
     }
 }
@@ -180,3 +183,39 @@ impl CacheUsable {
         for_caching.min(self.max)
     }
 }
+
+/*pub trait PushGrow<T>: Extend<T> {
+    fn reserve(&mut self, n: usize);
+}
+
+impl<T> PushGrow<T> for Vec<T> {
+    fn reserve(&mut self, n: usize) {
+        Vec::reserve(self,n)
+    }
+}
+
+pub struct RopedVec<T> {
+    inner: Vec<Vec<T>>,
+}
+
+impl<T> RopedVec<T> {
+    pub fn new() -> Self {
+        Self{
+            inner: Vec::new(),
+        }
+    }
+
+    pub fn push()
+}
+
+impl<T> Extend<T> for RopedVec<T> {
+    fn extend<T: IntoIterator<Item = T>>(&mut self, iter: T) {
+        todo!()
+    }
+}
+
+impl<T> PushGrow<T> for RopedVec<T> {
+    fn reserve(&mut self, n: usize) {
+        todo!()
+    }
+}*/

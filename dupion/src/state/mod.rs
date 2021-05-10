@@ -1,7 +1,8 @@
 use super::*;
+use rustc_hash::FxHashMap;
 use util::*;
 use vfs::{VfsId, Vfs, entry::VfsEntryType};
-use std::{collections::{HashMap, hash_map::Entry}, sync::Arc};
+use std::{collections::hash_map::Entry, sync::Arc};
 use group::{HashGroup, SizeGroup};
 use opts::Opts;
 
@@ -30,8 +31,9 @@ impl State {
                     Entry::Occupied(mut v) => {
                         let v = v.get_mut();
                         assert_eq!(v.size,size);
-                        v.entries.retain(|e| e != &(typ,id) ); //TODO opti
-                        v.entries.push((typ,id));
+                        if !v.entries.iter().any(|e| e == &(typ,id) ) {
+                            v.entries.push((typ,id));
+                        }
                     }
                 }
                 Ok(())
@@ -66,13 +68,15 @@ impl State {
                         assert_eq!(v.size,size);
                         assert_eq!(v.hash,*hash);
                         *hash = Arc::clone(&v.hash); //arc clone dedup
-                        v.entries.retain(|e| e != &(typ,id) ); //TODO opti
-                        v.entries.push((typ,id));
+                        if !v.entries.iter().any(|(_,e)| *e == id ) {
+                            v.entries.push((typ,id));
+                        }
                     }
                 }
                 Ok(())
             }
             
+            //TODO fix empty hash clash if archive complete read fail at first file
             if file {
                 let size = self.tree[id].file_size.unwrap();
                 infuse(&mut self.hashes,id,size,self.tree[id].file_hash.as_mut().unwrap(),VfsEntryType::File)?;
@@ -94,8 +98,13 @@ impl State {
         do_hash &= self.tree[id].file_hash.is_none();
         //only files
         do_hash &= self.tree[id].is_file;
-        //only hash if non-unique size or possible archive
-        do_hash &= self.more_than_one_size(self.tree[id].file_size.unwrap()) || opts.zip_by_extension(&self.tree[id].path);
+        
+        if !opts.zip_by_extension(&self.tree[id].path) {
+            //only hash if non-unique size or possible archive
+            do_hash &= self.more_than_one_size(self.tree[id].file_size.unwrap());
+            //only hash if min file size or possible archive
+            do_hash &= self.tree[id].file_size.unwrap() >= opts.scan_size_min;
+        }
         //hash anyway if possible archive and not dir (happens if archive-scanning was disabled in previous cache)
         do_hash |= opts.zip_by_extension(&self.tree[id].path) && self.tree[id].is_file && !self.tree[id].is_dir;
         do_hash
@@ -107,11 +116,23 @@ impl State {
         self.hashes.get(hash)
             .map_or(0, |e| e.entries.len() )
     }
+
+    /*pub fn find_with_identical_phys(&self, id: VfsId) -> Option<VfsId> {
+        let size = self.tree[id].file_size.unwrap();
+        if let Some(sg) = self.sizes.get(&size) {
+            assert_eq!(sg.size,size);
+            for (t,id) in sg.entries {
+                let f = self.tree[id];
+            }
+        }
+        None
+    }*/
+
     pub fn new(cache_allowed: bool) -> Self {
         Self{
             tree: Vfs::new(),
-            sizes: HashMap::with_capacity(16384),
-            hashes: HashMap::with_capacity(16384),
+            sizes: FxHashMap::with_capacity_and_hasher(16384, Default::default()),
+            hashes: FxHashMap::with_capacity_and_hasher(16384, Default::default()),
             cache_allowed,
         }
     }

@@ -124,6 +124,7 @@ impl Vfs {
             failure: None,
             treediff_stat: 0,
             dedup_state: None,
+            phys: Some(0),
         });
         senf
     }
@@ -155,7 +156,9 @@ macro_rules! maybe {
     };
 }
 
-#[derive(Copy,Clone,PartialEq,PartialOrd)]
+#[derive(serde_derive::Deserialize,serde_derive::Serialize,Copy,Clone,PartialEq,PartialOrd)]
+#[serde(transparent)]
+#[repr(transparent)]
 pub struct VfsId {
     pub evil_inner: usize,
 }

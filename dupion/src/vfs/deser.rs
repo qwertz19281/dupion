@@ -1,19 +1,23 @@
 use super::*;
 
+use base64::decode_config_slice;
+use rustc_hash::FxHashSet;
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde_derive::*;
-use std::{io::{BufReader, Cursor}, sync::atomic::Ordering, collections::HashSet};
+use std::borrow::Cow;
+use std::sync::atomic::AtomicUsize;
+use std::{io::BufReader, sync::atomic::Ordering, collections::HashSet};
 use sha2::digest::generic_array::GenericArray;
 use state::State;
 use util::{vfs_store_notif, Hash, Size};
 use std::{fs::File, cell::RefCell};
 
 #[derive(Serialize,Deserialize)]
-struct EntryIndermediate {
-    path: String,
+struct EntryIntermediate<'a> {
+    path: Cow<'a,str>,
     ctime: Option<i64>,
     file_size: Option<Size>,
-    file_hash: Option<String>,
+    file_hash: Option<Cow<'a,str>>,
     childs: Vec<VfsId>,
     was_file: bool,
     was_dir: bool,
@@ -21,7 +25,9 @@ struct EntryIndermediate {
     #[serde(default)] 
     upgrade: Option<u64>,
     #[serde(default)] 
-    v1_dedup_state: Option<bool>,
+    dedup_state: Option<bool>,
+    #[serde(default)] 
+    phys: Option<u64>,
 }
 
 impl Serialize for VfsEntry {
@@ -29,16 +35,18 @@ impl Serialize for VfsEntry {
     where
         S: Serializer,
     {
-        let i = EntryIndermediate{
-            path: self.path.to_str().unwrap().to_owned(),
+        let file_hash = self.file_hash.as_ref().map(encode_hash);
+        let i = EntryIntermediate{
+            path: Cow::Borrowed(self.path.to_str().unwrap()),
             ctime: self.ctime,
             file_size: self.file_size,
-            file_hash: self.file_hash.as_ref().map(encode_hash),
+            file_hash: file_hash.as_deref().map(|a| Cow::Borrowed(a) ),
             childs: self.childs.clone(),
             was_file: self.is_file || (self.was_file && !self.valid),
             was_dir: self.is_dir || (self.was_dir && !self.valid),
             upgrade: self.failure,
-            v1_dedup_state: self.dedup_state,
+            dedup_state: self.dedup_state,
+            phys: self.phys,
         };
         i.serialize(serializer)
     }
@@ -49,9 +57,9 @@ impl<'de> Deserialize<'de> for VfsEntry {
     where
         D: Deserializer<'de>,
     {
-        EntryIndermediate::deserialize(deserializer)
+        EntryIntermediate::deserialize(deserializer)
             .map(|i| {
-                let path: Arc<Path> = PathBuf::from(&i.path).into();
+                let path: Arc<Path> = PathBuf::from(i.path.as_ref()).into();
                 VfsEntry{
                     plc: to_plc(&path),
                     path,
@@ -72,7 +80,8 @@ impl<'de> Deserialize<'de> for VfsEntry {
                     disp_relevated: false,
                     failure: i.upgrade,
                     treediff_stat: 0,
-                    dedup_state: i.v1_dedup_state,
+                    dedup_state: i.dedup_state,
+                    phys: None,
                 }
             })
     }
@@ -83,20 +92,22 @@ impl State {
         if self.cache_allowed && (force || vfs_store_notif.swap(false,Ordering::AcqRel)) {
             let mut stor = Vec::with_capacity(1024*1024);
             tryz!(serde_json::to_writer(&mut stor, &self.tree.entries));
-            tryz!(std::fs::write("./dedupion_cache",&stor));
+            tryz!(std::fs::write("./dupion_cache",&stor));
             //eprintln!("Wrote cache");
         }
     }
     pub fn eventually_load_vfs(&mut self) {
         if self.cache_allowed {
-            let path = PathBuf::from("./dedupion_cache");
+            let path = PathBuf::from("./dupion_cache");
             if path.is_file() {
                 let reader= tryz!(File::open(&path));
                 let reader = BufReader::new(reader);
                 let entries: Vec<VfsEntry> = tryz!(serde_json::from_reader(reader));
                 self.tree.entries = entries;
                 //drop the previous intern map
-                DEDUP.with(|z| *z.borrow_mut() = HashSet::with_capacity(0) );
+                DEDUP.with(|z|
+                    *z.borrow_mut() = HashSet::with_capacity_and_hasher(0,Default::default())
+                );
             }
         }
     }
@@ -108,17 +119,21 @@ pub fn encode_hash(h: &Hash) -> String {
 
 //for Hash interning
 thread_local! {
-    pub static DEDUP: RefCell<HashSet<Hash>> = RefCell::new(HashSet::new());
+    pub static DEDUP: RefCell<FxHashSet<Hash>> = RefCell::new(FxHashSet::with_capacity_and_hasher(16384,Default::default()));
 }
 
 pub fn decode_hash(h: &str) -> Hash {
-    let decoded = base64::decode(h).unwrap();
-    let arc = Arc::new( GenericArray::clone_from_slice(&decoded) );
+    let mut decoded = GenericArray::default();
+    assert_eq!(
+        decode_config_slice(h, base64::STANDARD, &mut decoded).unwrap(),
+        decoded.len()
+    );
     DEDUP.with(move |z| { 
         let mut z = z.borrow_mut();
-        if let Some(v) = z.get(&arc) {
+        if let Some(v) = z.get(&decoded) {
             v.clone()
         }else{
+            let arc = Arc::new(decoded);
             z.insert(arc.clone());
             arc
         }
@@ -140,20 +155,6 @@ macro_rules! tryz {
     };
 }
 
-impl Serialize for VfsId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        self.evil_inner.serialize(serializer)
-    }
-}
-impl<'de> Deserialize<'de> for VfsId {
-    fn deserialize<D>(deserializer: D) -> Result<VfsId, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        usize::deserialize(deserializer)
-            .map(|v| VfsId{evil_inner: v} )
-    }
+fn defhys() -> Option<u64> {
+    Some(0)
 }

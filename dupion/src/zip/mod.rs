@@ -62,6 +62,7 @@ pub fn decode_zip<'r,R>(mut ar: R, zip_path: &Path, state: &RwLock<State>, opts:
                         e.is_file = true;
                         e.file_size = Some(r2 as u64);
                         e.file_hash = Some(hash);
+                        e.phys = None;
                         e.valid = true;
                         //e.dir_size = None;
                         //e.dir_hash = None;

@@ -8,6 +8,7 @@ repository = "https://github.com/the8472/reapfrog"
 readme = "README.md"
 categories = ["filesystem"]
 license = "MPL-2.0"
+edition = "2018"
 
 include = [
     "**/*.rs",

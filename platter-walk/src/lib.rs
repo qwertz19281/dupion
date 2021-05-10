@@ -4,11 +4,9 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
-extern crate btrfs2 as btrfs;
-extern crate mnt;
-extern crate libc;
 
-use btrfs::linux::{get_file_extent_map_for_path, FileExtent};
+use btrfs2::{get_file_extent_map, linux::{get_file_extent_map_for_path, FileExtent}, FileDescriptor};
+use rustc_hash::FxHashMap;
 use std::fs::*;
 use std::os::unix::fs::DirEntryExt;
 use std::path::PathBuf;
@@ -16,6 +14,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::Path;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::io::AsRawFd;
+use std::os::unix::io::FromRawFd;
 use std::cmp::Reverse;
 
 pub struct Entry<D> where D: Default {
@@ -81,7 +80,7 @@ pub struct ToScan<D> where D: Default {
     phase: Phase,
     order: Order,
     batch_size: usize,
-    prefetched: HashMap<PathBuf, u64>,
+    prefetched: FxHashMap<PathBuf, u64>,
     mountpoints: Vec<mnt::MountEntry>,
     prefetch_cap: usize
 }
@@ -117,7 +116,7 @@ impl<D> ToScan<D> where D: Default {
             phase: Phase::DirWalk,
             batch_size: 1024,
             prefilter: None,
-            prefetched: Default::default(),
+            prefetched: FxHashMap::default(),
             mountpoints: vec![],
             prefetch_cap: 0
         }
@@ -216,7 +215,7 @@ impl<D> ToScan<D> where D: Default {
         let mut prune = vec![];
 
         {
-            let mut device_groups = HashMap::new();
+            let mut device_groups = FxHashMap::default();
 
             for e in unordered_iter.chain(ordered_iter_front).chain(ordered_iter_tail) {
                 if remaining == 0 {
@@ -402,13 +401,14 @@ impl<D> Iterator for ToScan<D> where D: Default {
             match self.order {
                 Order::Content => {
                     for mut e in self.inode_ordered.drain(..).rev() {
-                        let offset = match get_file_extent_map_for_path(e.path()) {
+                        let (meta,extents) = file_meta_and_extents(e.path());
+                        let offset = match extents {
                             Ok(ref extents) if !extents.is_empty() => extents[0].physical,
                             _ => 0
                         };
                         //The metadata should now be cached by the OS, so file size read shouldn't be slow
                         if e.ftype.is_file() {
-                            if let Ok(meta) = std::fs::metadata(e.path()) {
+                            if let Ok(meta) = meta {
                                 e.metadata = Some(meta);
                             }
                             /*if let Ok(canon) = std::fs::canonicalize(e.path()) {
@@ -442,3 +442,33 @@ impl<D> Iterator for ToScan<D> where D: Default {
 
 }
 
+pub fn file_meta_and_extents(path: impl AsRef<Path>) -> (Result<Metadata,String>,Result<Vec<FileExtent>,String>) {
+
+    let fd = FileDescriptor::open(
+		&path,
+		libc::O_RDONLY,
+    );
+    
+    let fd = match fd {
+        Ok(v) => v,
+        Err(e) => {
+            let s = format!("{}",e);
+            return (Err(s.clone()),Err(s));
+        }
+    };
+
+    let extents = get_file_extent_map (
+        fd.get_value());
+    
+    let file = unsafe{File::from_raw_fd(fd.get_value())};
+    let meta = file.metadata().map_err(|e| format!("{}",e) );
+    std::mem::forget(file);
+
+    /*if let Ok(mmhhh) = &meta {
+        let mmmhh = std::fs::metadata(&path).unwrap();
+        assert_eq!(mmhhh.ctime(),mmmhh.ctime());
+        assert_eq!(mmhhh.len(),mmmhh.len());
+    }*/
+
+    (meta,extents)
+}

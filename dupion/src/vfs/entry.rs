@@ -27,6 +27,7 @@ pub struct VfsEntry {
     pub failure: Option<u64>,
     pub treediff_stat: u8,
     pub dedup_state: Option<bool>,
+    pub phys: Option<u64>,
 }
 
 impl VfsEntry {
@@ -52,13 +53,14 @@ impl VfsEntry {
             failure: None,
             treediff_stat: 0,
             dedup_state: None,
+            phys: Some(0),
         }
     }
 
     pub fn disp_add_relevant(&mut self) {
         if !self.disp_relevated && self.file_hash.is_none() {
-            let size = self.file_size.unwrap() as usize;
-            disp_relevant_bytes.fetch_add(size as usize,Ordering::Relaxed);
+            let size = self.file_size.unwrap();
+            disp_relevant_bytes.fetch_add(size,Ordering::Relaxed);
             disp_relevant_files.fetch_add(1,Ordering::Relaxed);
             self.disp_relevated = true;
         }
@@ -183,6 +185,7 @@ impl State {
             s.dir_size = None;
             s.dir_hash = None;
             s.dedup_state = None;
+            s.phys = Some(0);
             s.ctime = Some(ctime);
             s.valid = true;
             false

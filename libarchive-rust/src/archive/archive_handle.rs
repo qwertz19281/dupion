@@ -29,7 +29,7 @@ impl<'r> Drop for ArchiveHandle<'r> {
     }
 }
 
-impl<'r> ::archive::Handle<'r> for ArchiveHandle<'r> {
+impl<'r> crate::archive::Handle<'r> for ArchiveHandle<'r> {
     unsafe fn handle(&self) -> &mut ffi::Struct_archive {
         &mut *self.handle
     }

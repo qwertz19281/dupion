@@ -1,5 +1,5 @@
-use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{printion, export, calculate_dir_hash, find_shadowed, treestat::printion_tree, treediff::printion_treediff}, util::*, vfs::VfsId, zip::setlocale_hack};
-use std::{time::Duration, sync::{atomic::Ordering}, path::PathBuf};
+use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{export, calculate_dir_hash, find_shadowed}, util::*, vfs::VfsId, zip::setlocale_hack, output::{tree::print_tree, groups::print_groups, treediff::print_treediff}, dedup::{Deduper, btrfs::BtrfsDedup}};
+use std::{time::Duration, sync::{atomic::Ordering}, path::PathBuf, io::Write};
 use size_format::SizeFormatterBinary;
 use parking_lot::RwLock;
 use structopt::*;
@@ -22,6 +22,7 @@ fn main() {
         read_archives: o.read_archives,
         //huge_zip_thres: ((o.huge_zip_thres * 1048576.0) as usize +1024)/4096*4096,
         threads: o.threads,
+        scan_size_min: o.min_size,
     }));
 
     if opts.paths.is_empty() {
@@ -45,6 +46,14 @@ fn main() {
         dirty_load(&o, opts, state);
     }
 
+    if o.dedup == "btrfs" {
+        eprintln!("\n\n#### Dedup");
+        disp_enabled.store(true, Ordering::Release);
+        BtrfsDedup{}.dedup(state,opts).unwrap();
+        disp_enabled.store(false, Ordering::Release);
+        print_stat();
+    }
+
     let mut state = state.write();
 
     eprintln!("\n\n#### Calculate");
@@ -61,9 +70,10 @@ fn main() {
     eprintln!("#### Result");
 
     match o.output {
-        OutputMode::Groups => printion(&sorted, &state, &opts),
-        OutputMode::Tree => printion_tree(&mut state, &opts),
-        OutputMode::Diff => printion_treediff(&mut state, &opts),
+        OutputMode::Groups => print_groups(&sorted, &state, &opts),
+        OutputMode::Tree => print_tree(&mut state, &opts),
+        OutputMode::Diff => print_treediff(&mut state, &opts),
+        OutputMode::Disabled => {}, //TODO exit before calc and sort
     }
 }
 
@@ -131,30 +141,47 @@ pub fn spawn_info_thread(o: &Opts) {
 }
 
 pub fn print_stat() {
-    let processed_files = disp_processed_files.load(Ordering::Acquire) as u64;
-    let relevant_files = disp_relevant_files.load(Ordering::Acquire) as u64;
-    let found_files = disp_found_files.load(Ordering::Acquire) as u64;
-    let processed_bytes = disp_processed_bytes.load(Ordering::Acquire) as u64;
-    let relevant_bytes = disp_relevant_bytes.load(Ordering::Acquire) as u64;
-    let found_bytes = disp_found_bytes.load(Ordering::Acquire) as u64;
-    let prev_bytes = disp_prev.swap(processed_bytes as usize, Ordering::AcqRel) as u64;
+    let processed_files = disp_processed_files.load(Ordering::Acquire);
+    let relevant_files = disp_relevant_files.load(Ordering::Acquire);
+    let found_files = disp_found_files.load(Ordering::Acquire);
+    let processed_bytes = disp_processed_bytes.load(Ordering::Acquire);
+    let relevant_bytes = disp_relevant_bytes.load(Ordering::Acquire);
+    let found_bytes = disp_found_bytes.load(Ordering::Acquire);
+    let prev_bytes = disp_prev.swap(processed_bytes, Ordering::AcqRel);
+    let deduped_bytes = disp_deduped_bytes.load(Ordering::Acquire);
     let alloced = alloc_mon.load(Ordering::Acquire) as u64;
     assert!(processed_bytes >= prev_bytes);
 
-    eprint!(
-        //"\x1B[2K\rAnalyzed files: {:>filefill$}/{} bytes: {:>12}B/{}B ({:>12}B/s) percent: {}%",
-        "\x1B[2K\rFound: {:>12} ({:>12}B)                Hashed: {:>12}/{} {:>12}B/{}B ({:>12}B/s)        alloc={:>12}B",
-        found_files,
-        SizeFormatterBinary::new(found_bytes),
-        processed_files,
-        relevant_files,
-        SizeFormatterBinary::new(processed_bytes),
-        SizeFormatterBinary::new(relevant_bytes),
-        SizeFormatterBinary::new((processed_bytes - prev_bytes)*2),
-        SizeFormatterBinary::new(alloced),
-        //( processed_bytes as f32 / relevant_bytes as f32 )*100.0,
-        //filefill = relevant_files.to_string().len(),
-    );
+    if deduped_bytes == u64::MAX {
+        eprint!(
+            //"\x1B[2K\rAnalyzed files: {:>filefill$}/{} bytes: {:>12}B/{}B ({:>12}B/s) percent: {}%",
+            "\x1B[2K\rFound: {} ({}B)        Hashed: {}/{} {}B/{}B ({}B/s)        alloc={}B",
+            found_files,
+            SizeFormatterBinary::new(found_bytes),
+            processed_files,
+            relevant_files,
+            SizeFormatterBinary::new(processed_bytes),
+            SizeFormatterBinary::new(relevant_bytes),
+            SizeFormatterBinary::new((processed_bytes - prev_bytes)*2),
+            SizeFormatterBinary::new(alloced),
+            //( processed_bytes as f32 / relevant_bytes as f32 )*100.0,
+            //filefill = relevant_files.to_string().len(),
+        );
+    }else{
+        eprint!(
+            //"\x1B[2K\rAnalyzed files: {:>filefill$}/{} bytes: {:>12}B/{}B ({:>12}B/s) percent: {}%",
+            "\x1B[2K\rDeduplication: Processed: {}/{} {}B/{}B ({}B/s)        Deduped: {}B",
+            processed_files,
+            relevant_files,
+            SizeFormatterBinary::new(processed_bytes),
+            SizeFormatterBinary::new(relevant_bytes),
+            SizeFormatterBinary::new((processed_bytes - prev_bytes)*2),
+            SizeFormatterBinary::new(deduped_bytes as u64),
+            //( processed_bytes as f32 / relevant_bytes as f32 )*100.0,
+            //filefill = relevant_files.to_string().len(),
+        );
+    }
+    let _ = std::io::stdout().flush();
 }
 
 pub fn get_threads() -> usize {
@@ -178,7 +205,7 @@ pub fn get_threads() -> usize {
 }
 
 #[derive(StructOpt)]
-#[structopt(name = "dedupion", about = "Find duplicate files and folders")]
+#[structopt(name = "dupion", about = "Find duplicate files and folders")]
 pub struct OptInput {
     #[structopt(long,default_value="1.0",help="EXPERIMENTAL read buffer in MiB")]
     pub read_buffer: f64,
@@ -190,6 +217,8 @@ pub struct OptInput {
     pub threads: usize,
     #[structopt(short,long,default_value="2",help="show shadowed files/directory (shadowed are e.g. childs of duplicate dirs) (0-3)\n0: show ALL, including pure shadowed groups\n1: show all except pure shadowed groups\n2: show shadowed only if there is also one non-shadowed in the group\n3: never show shadowed\n")]
     pub shadow_rule: u8,
+    #[structopt(short,long,default_value="0",help="file lower size limit for scanning in bytes")]
+    pub min_size: u64,
 
     #[structopt(short,long,help="spam stderr")]
     pub verbose: bool,
@@ -207,8 +236,11 @@ pub struct OptInput {
     pub read_archives: bool, //TODO: build mode w/o archive support
     #[structopt(long,help="EXPERIMENTAL don't scan and reuse cached data")]
     pub no_scan: bool,
-    #[structopt(short,long,parse(from_str),default_value="g",help="Results output mode (g/t/d)\ngroups: duplicate entries in sorted size groups\ntree: json as tree\ndiff: like tree, but exact dir comparision, reveals diffs and supersets\n")]
+
+    #[structopt(short,long,parse(from_str),default_value="g",help="Results output mode (g/t/d/-)\ngroups: duplicate entries in sorted size groups\ntree: json as tree\ndiff: like tree, but exact dir comparision, reveals diffs and supersets\n-: disabled\n")]
     pub output: OutputMode,
+    #[structopt(long,default_value="",help="EXPERIMENTAL")]
+    pub dedup: String,
 
     #[structopt(parse(from_os_str),help="directories to scan. cwd if none given")]
     pub dirs: Vec<PathBuf>,
@@ -218,6 +250,7 @@ pub enum OutputMode {
     Groups,
     Tree,
     Diff,
+    Disabled,
 }
 
 impl From<&str> for OutputMode {
@@ -226,6 +259,7 @@ impl From<&str> for OutputMode {
             Some('g') => Self::Groups,
             Some('t') => Self::Tree,
             Some('d') => Self::Diff,
+            Some('-') => Self::Disabled,
             _ => panic!("Invalid output mode"),
         }
     }

@@ -1,4 +1,4 @@
-use archive::FileType;
+use crate::archive::FileType;
 
 use libc::{c_uint, mode_t, timespec};
 use std::ffi::{CStr, CString};

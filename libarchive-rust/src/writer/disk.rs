@@ -4,10 +4,10 @@ use std::{marker::PhantomData, ptr};
 
 use libarchive3_sys::ffi;
 
-use archive::{ArchiveHandle, ExtractOptions, Handle};
-use reader::Reader;
-use entry::{Entry, BorrowedEntry};
-use error::{ArchiveResult, ArchiveError};
+use crate::archive::{ArchiveHandle, ExtractOptions, Handle};
+use crate::reader::Reader;
+use crate::entry::{Entry, BorrowedEntry};
+use crate::error::{ArchiveResult, ArchiveError};
 
 pub struct Disk<'r> {
     handle: ArchiveHandle<'r>,
@@ -103,7 +103,7 @@ impl<'r> Disk<'r> {
                 }
             }
             if write_pending {
-                bytes += try!(self.write_data(reader));
+                bytes += self.write_data(reader)?;
                 write_pending = false;
             }
         }
