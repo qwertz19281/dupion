@@ -178,7 +178,7 @@ impl CacheUsable {
 
     pub fn get(&mut self) -> u64 {
         self.sys.refresh_memory();
-        let sys_available = self.sys.get_total_memory() - self.sys.get_used_memory();
+        let sys_available = self.sys.total_memory() - self.sys.used_memory();
         let for_caching = (sys_available*1000/2+1024)/4096*4096;
         for_caching.min(self.max)
     }
