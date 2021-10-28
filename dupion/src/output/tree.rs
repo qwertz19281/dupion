@@ -35,7 +35,7 @@ impl<'a> Serialize for TreeRoot<'a> {
                 let name = reduce_path(path,path,true);
                 (name,DirEntry{
                     state: self.state,
-                    id: id,
+                    id,
                     root_path: path,
                     force_absolute_paths: self.force_absolute_paths,
                 })
@@ -138,7 +138,7 @@ pub fn print_tree(state: &State, opts: &Opts) {
         .collect::<Vec<_>>();
     
     let ser = TreeRoot{
-        state: state,
+        state,
         roots,
         force_absolute_paths: opts.force_absolute_paths,
     };

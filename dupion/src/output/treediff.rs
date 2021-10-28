@@ -146,7 +146,7 @@ pub fn print_treediff(state: &mut State, opts: &Opts) {
     find_diffs(state, &roots);
     
     let ser = TreeRoot{
-        state: state,
+        state,
         roots,
         force_absolute_paths: opts.force_absolute_paths,
     };

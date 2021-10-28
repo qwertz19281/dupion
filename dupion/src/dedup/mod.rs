@@ -36,14 +36,13 @@ pub trait Deduper {
 
             if candidates.is_empty() {continue;}
 
-            let mut cand_avg_phys = 0;
-            let mut avg_phys = 0;
+            let mut phys_sum = 0;
 
             for &c in &candidates {
-                cand_avg_phys += s.tree[c].phys.unwrap();
+                phys_sum += s.tree[c].phys.unwrap();
             }
-            avg_phys = cand_avg_phys;
-            cand_avg_phys /= candidates.len() as u64;
+
+            let cand_avg_phys = phys_sum / candidates.len() as u64;
 
             if senpai.is_none() {
                 if candidates.len() < 2 {continue;}
@@ -66,8 +65,8 @@ pub trait Deduper {
             candidates.truncate(511); //TODO real max open file
             candidates.shrink_to_fit();
             
-            avg_phys += s.tree[senpai].phys.unwrap();
-            avg_phys /= candidates.len() as u64 +1;
+            let avg_phys =
+                (phys_sum + s.tree[senpai].phys.unwrap()) / (candidates.len() as u64 +1);
 
             let size = s.tree[senpai].file_size.unwrap();
 

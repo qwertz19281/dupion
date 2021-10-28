@@ -70,9 +70,9 @@ fn main() {
     eprintln!("#### Result");
 
     match o.output {
-        OutputMode::Groups => print_groups(&sorted, &state, &opts),
-        OutputMode::Tree => print_tree(&mut state, &opts),
-        OutputMode::Diff => print_treediff(&mut state, &opts),
+        OutputMode::Groups => print_groups(&sorted, &state, opts),
+        OutputMode::Tree => print_tree(&state, opts),
+        OutputMode::Diff => print_treediff(&mut state, opts),
         OutputMode::Disabled => {}, //TODO exit before calc and sort
     }
 }
@@ -83,7 +83,7 @@ pub fn scan(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
     eprintln!("\n#### Pass 1\n");
 
     disp_enabled.store(true, Ordering::Release);
-    spawn_info_thread(&opts);
+    spawn_info_thread(opts);
     d.run(state,opts,Phase::Size).unwrap();
     disp_enabled.store(false, Ordering::Release);
 

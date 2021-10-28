@@ -31,7 +31,7 @@ impl Driver for PlatterWalker {
 
                 for root in &opts.paths {
                     if root.is_dir() {
-                        try_returnerr!(scan.add_root(root.clone()),"\tError adding root: {} ({})",opts.path_disp(&root));
+                        try_returnerr!(scan.add_root(root.clone()),"\tError adding root: {} ({})",opts.path_disp(root));
                     } else if root.is_file() {
                         size_file(
                             root,
@@ -152,12 +152,12 @@ pub fn size_file(path: &Path, meta: &Metadata, phy_off: u64, dest: &mut Vec<(u64
     let size = meta.len();
     let ctime = meta.ctime();
 
-    opts.log_verbosed("SIZE", &path);
+    opts.log_verbosed("SIZE", path);
 
     disp_found_bytes.fetch_add(size,Ordering::Relaxed);
     disp_found_files.fetch_add(1,Ordering::Relaxed);
 
-    let id = s.tree.cid_and_create(&path);
+    let id = s.tree.cid_and_create(path);
     s.validate(id,ctime,Some(size),None);
 
     let e = &mut s.tree[id];

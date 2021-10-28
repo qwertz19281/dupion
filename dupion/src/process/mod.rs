@@ -1,8 +1,6 @@
 use super::*;
 use state::State;
 use group::HashGroup;
-use size_format::SizeFormatterBinary;
-use opts::Opts;
 use vfs::VfsId;
 use util::{Hash, Size};
 use sha2::{Digest, Sha512};

@@ -5,7 +5,6 @@ use rustc_hash::FxHashSet;
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde_derive::*;
 use std::borrow::Cow;
-use std::sync::atomic::AtomicUsize;
 use std::{io::BufReader, sync::atomic::Ordering, collections::HashSet};
 use sha2::digest::generic_array::GenericArray;
 use state::State;
