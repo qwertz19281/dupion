@@ -58,6 +58,8 @@ fn main() {
 
     let mut state = state.write();
 
+    if matches!(o.output, OutputMode::Disabled) {return;}
+
     eprintln!("\n\n#### Calculate");
     
     assert!(!state.tree.entries.is_empty(),"No Duplicates found");
