@@ -46,6 +46,8 @@ fn main() {
         dirty_load(&o, opts, state);
     }
 
+    if o.bench_pass_1 {return;}
+
     if o.dedup == "btrfs" {
         eprintln!("\n\n#### Dedup");
         disp_enabled.store(true, Ordering::Release);
@@ -117,8 +119,6 @@ pub fn dirty_load(o: &OptInput, opts: &'static Opts, state: &'static RwLock<Stat
         let id = state.tree.cid_and_create(root);
         state.set_valid(id);
     }
-
-    if o.bench_pass_1 {return;}
 }
 
 pub fn spawn_info_thread(o: &Opts) {
