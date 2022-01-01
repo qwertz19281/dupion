@@ -5,7 +5,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use btrfs2::{get_file_extent_map, linux::{get_file_extent_map_for_path, FileExtent}, FileDescriptor};
+use btrfs::{get_file_extent_map_noloop, linux::{get_file_extent_map_for_path_noloop, FileExtent}, FileDescriptor};
 use rustc_hash::FxHashMap;
 use std::fs::*;
 use std::os::unix::fs::DirEntryExt;
@@ -356,7 +356,7 @@ impl<D> Iterator for ToScan<D> where D: Default {
                     // move to inode pass? won't start the next dir before this one is done anyway
                     if meta.is_dir() {
 
-                        let extents = get_file_extent_map_for_path(dent.path())
+                        let extents = get_file_extent_map_for_path_noloop(dent.path())
                             .unwrap_or_else(|_| Vec::new() );
 
                         let to_add = Entry::new(dent.path(), meta, dent.ino(), extents, D::default());
@@ -457,7 +457,7 @@ pub fn file_meta_and_extents(path: impl AsRef<Path>) -> (Result<Metadata,String>
         }
     };
 
-    let extents = get_file_extent_map (
+    let extents = get_file_extent_map_noloop (
         fd.get_value());
     
     let file = unsafe{File::from_raw_fd(fd.get_value())};

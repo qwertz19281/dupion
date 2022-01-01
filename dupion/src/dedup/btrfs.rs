@@ -1,7 +1,7 @@
 use super::*;
 use std::{sync::atomic::Ordering, fs::{Metadata, File}};
 use util::{disp_processed_bytes, disp_processed_files};
-use btrfs2::{DedupeRange, DedupeRangeDestInfo, DedupeRangeStatus, deduplicate_range};
+use ::btrfs::{DedupeRange, DedupeRangeDestInfo, DedupeRangeStatus, deduplicate_range};
 use std::os::unix::io::FromRawFd;
 use size_format::SizeFormatterBinary;
 use fd::FileDescriptor;
