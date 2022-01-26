@@ -94,13 +94,13 @@ pub struct AllocMonBuf(Vec<u8>);
 
 impl AllocMonBuf {
     pub fn new(size: usize, alloc_thresh: usize) -> Self {
-        while alloc_mon.load(Ordering::Acquire)+size > alloc_thresh {
+        while alloc_mon.load(Ordering::Relaxed)+size > alloc_thresh {
             std::thread::sleep(Duration::from_millis(50));
         }
         let buf = align_first::<_,A4096>(size);
         assert_eq!(buf.len(),size);
         assert_eq!(buf.capacity(),size);
-        alloc_mon.fetch_add(size, Ordering::AcqRel);
+        alloc_mon.fetch_add(size, Ordering::Relaxed);
         Self(buf)
     }
 }
@@ -118,7 +118,7 @@ impl DerefMut for AllocMonBuf {
 }
 impl Drop for AllocMonBuf {
     fn drop(&mut self) {
-        alloc_mon.fetch_sub(self.capacity(), Ordering::AcqRel);
+        alloc_mon.fetch_sub(self.capacity(), Ordering::Relaxed);
     }
 }
 

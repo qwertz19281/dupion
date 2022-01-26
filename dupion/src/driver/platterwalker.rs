@@ -91,7 +91,7 @@ impl Driver for PlatterWalker {
 
                 let mut s = state.write();
 
-                disp_enabled.store(false, Ordering::Release);
+                disp_enabled.store(false, Ordering::Relaxed);
 
                 eprint!("\nSort...");
                 io::stdout().flush().unwrap();
@@ -108,7 +108,7 @@ impl Driver for PlatterWalker {
 
                 eprintln!(" Done");
 
-                disp_enabled.store(true, Ordering::Release);
+                disp_enabled.store(true, Ordering::Relaxed);
 
                 self.entries = Some(dest);
 
