@@ -5,6 +5,7 @@ members = [
     "platter-walk",
     "reapfrog",
     "libarchive-rust",
+    "rust-btrfs",
 ]
 
 [profile.release]
