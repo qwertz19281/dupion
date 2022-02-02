@@ -21,7 +21,7 @@ libc = ">=0.2.70"
 parking_lot = "0.11"
 num_cpus = "1.13"
 sysinfo = "0.20"
-btrfs2 = "1.2.2"
+btrfs = { path = "../rust-btrfs" }
 rustc-hash = "1.1"
 
 [dependencies.maligned]

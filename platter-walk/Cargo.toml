@@ -19,7 +19,7 @@ include = [
 
 
 [dependencies]
-btrfs2 = "1.2.2"
+btrfs = { path = "../rust-btrfs" }
 mnt = "0.3.1"
 libc = ">=0.2.70"
 rustc-hash = "1"
