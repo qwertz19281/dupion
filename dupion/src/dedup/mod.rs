@@ -11,12 +11,12 @@ pub mod fd;
 
 pub trait Deduper {
     fn dedup(&mut self, state: &'static RwLock<State>, opts: &'static Opts) -> AnyhowResult<()> {
-        disp_processed_files.store(0,Ordering::Release);
-        disp_prev.store(0,Ordering::Release);
-        disp_processed_bytes.store(0,Ordering::Release);
-        disp_relevant_files.store(0,Ordering::Release);
-        disp_relevant_bytes.store(0,Ordering::Release);
-        disp_deduped_bytes.store(0, Ordering::Release);
+        disp_processed_files.store(0,Ordering::Relaxed);
+        disp_prev.store(0,Ordering::Relaxed);
+        disp_processed_bytes.store(0,Ordering::Relaxed);
+        disp_relevant_files.store(0,Ordering::Relaxed);
+        disp_relevant_bytes.store(0,Ordering::Relaxed);
+        disp_deduped_bytes.store(0, Ordering::Relaxed);
         
         let s = state.write();
         let mut dest: Vec<DedupGroup> = Vec::with_capacity(s.hashes.len());

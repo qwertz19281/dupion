@@ -88,7 +88,7 @@ impl<'de> Deserialize<'de> for VfsEntry {
 
 impl State {
     pub fn eventually_store_vfs(&self, force: bool) {
-        if self.cache_allowed && (force || vfs_store_notif.swap(false,Ordering::AcqRel)) {
+        if self.cache_allowed && (force || vfs_store_notif.swap(false,Ordering::Relaxed)) {
             let mut stor = Vec::with_capacity(1024*1024);
             tryz!(serde_json::to_writer(&mut stor, &self.tree.entries));
             tryz!(std::fs::write("./dupion_cache",&stor));

@@ -50,9 +50,9 @@ fn main() {
 
     if o.dedup == "btrfs" {
         eprintln!("\n\n#### Dedup");
-        disp_enabled.store(true, Ordering::Release);
+        disp_enabled.store(true, Ordering::Relaxed);
         BtrfsDedup{}.dedup(state,opts).unwrap();
-        disp_enabled.store(false, Ordering::Release);
+        disp_enabled.store(false, Ordering::Relaxed);
         print_stat();
     }
 
@@ -86,10 +86,10 @@ pub fn scan(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
 
     eprintln!("\n#### Pass 1\n");
 
-    disp_enabled.store(true, Ordering::Release);
+    disp_enabled.store(true, Ordering::Relaxed);
     spawn_info_thread(opts);
     d.run(state,opts,Phase::Size).unwrap();
-    disp_enabled.store(false, Ordering::Release);
+    disp_enabled.store(false, Ordering::Relaxed);
 
     print_stat();
 
@@ -97,16 +97,16 @@ pub fn scan(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
 
     eprintln!("\n\n#### Pass 2\n");
 
-    disp_enabled.store(true, Ordering::Release);
+    disp_enabled.store(true, Ordering::Relaxed);
     d.run(state,opts,Phase::Hash).unwrap();
-    disp_enabled.store(false, Ordering::Release);
+    disp_enabled.store(false, Ordering::Relaxed);
     print_stat();
 
     eprintln!("\n\n#### Pass 3\n");
 
-    disp_enabled.store(true, Ordering::Release);
+    disp_enabled.store(true, Ordering::Relaxed);
     d.run(state,opts,Phase::PostHash).unwrap();
-    disp_enabled.store(false, Ordering::Release);
+    disp_enabled.store(false, Ordering::Relaxed);
     print_stat();
 
     let mut state = state.write();
@@ -132,9 +132,9 @@ pub fn spawn_info_thread(o: &Opts) {
                 note+=1;
                 if note >= 1200 {
                     note = 0;
-                    vfs_store_notif.store(true, Ordering::Release);
+                    vfs_store_notif.store(true, Ordering::Relaxed);
                 }
-                if disp_enabled.load(Ordering::Acquire) {
+                if disp_enabled.load(Ordering::Relaxed) {
                     print_stat();
                 }
             }
@@ -143,16 +143,15 @@ pub fn spawn_info_thread(o: &Opts) {
 }
 
 pub fn print_stat() {
-    let processed_files = disp_processed_files.load(Ordering::Acquire);
-    let relevant_files = disp_relevant_files.load(Ordering::Acquire);
-    let found_files = disp_found_files.load(Ordering::Acquire);
-    let processed_bytes = disp_processed_bytes.load(Ordering::Acquire);
-    let relevant_bytes = disp_relevant_bytes.load(Ordering::Acquire);
-    let found_bytes = disp_found_bytes.load(Ordering::Acquire);
-    let prev_bytes = disp_prev.swap(processed_bytes, Ordering::AcqRel);
-    let deduped_bytes = disp_deduped_bytes.load(Ordering::Acquire);
-    let alloced = alloc_mon.load(Ordering::Acquire) as u64;
-    assert!(processed_bytes >= prev_bytes);
+    let processed_files = disp_processed_files.load(Ordering::Relaxed);
+    let relevant_files = disp_relevant_files.load(Ordering::Relaxed);
+    let found_files = disp_found_files.load(Ordering::Relaxed);
+    let processed_bytes = disp_processed_bytes.load(Ordering::Relaxed);
+    let relevant_bytes = disp_relevant_bytes.load(Ordering::Relaxed);
+    let found_bytes = disp_found_bytes.load(Ordering::Relaxed);
+    let prev_bytes = disp_prev.swap(processed_bytes, Ordering::Relaxed).min(processed_bytes);
+    let deduped_bytes = disp_deduped_bytes.load(Ordering::Relaxed);
+    let alloced = alloc_mon.load(Ordering::Relaxed) as u64;
 
     if deduped_bytes == u64::MAX {
         eprint!(
