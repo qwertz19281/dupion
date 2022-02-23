@@ -240,7 +240,7 @@ pub struct OptInput {
 
     #[structopt(short,long,parse(from_str),default_value="g",help="Results output mode (g/t/d/-)\ngroups: duplicate entries in sorted size groups\ntree: json as tree\ndiff: like tree, but exact dir comparision, reveals diffs and supersets\n-: disabled\n")]
     pub output: OutputMode,
-    #[structopt(long,default_value="",help="EXPERIMENTAL")]
+    #[structopt(long,default_value="",help="EXPERIMENTAL Deduplication mode (-/btrfs). Disabled by default")]
     pub dedup: String,
 
     #[structopt(parse(from_os_str),help="directories to scan. cwd if none given")]
