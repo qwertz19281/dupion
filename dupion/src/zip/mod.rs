@@ -4,8 +4,6 @@ use std::{ffi::CString, sync::Arc, path::Path, io::{Read, Write, Seek}};
 use parking_lot::RwLock;
 use state::State;
 use libarchive::{entry::OwnedEntry, reader::{StreamReader, Reader as AReader, Builder}, archive::{FileType, Entry, ReadFormat, ReadFilter, ReadCompression}};
-use sha2::Sha512;
-use sha2::Digest;
 
 pub fn decode_zip<'r,R>(mut ar: R, zip_path: &Path, state: &RwLock<State>, opts: &Opts) -> AnyhowResult<()> where R: AReader<'r> {
     let result = (||{
@@ -30,7 +28,7 @@ pub fn decode_zip<'r,R>(mut ar: R, zip_path: &Path, state: &RwLock<State>, opts:
 
                         opts.log_verbosed("HASH", &zip_path.join(name));
                         
-                        let mut hasher = Sha512::new();
+                        let mut hasher = blake3::Hasher::new();
 
                         let mut r2 = 0;
 
@@ -48,7 +46,7 @@ pub fn decode_zip<'r,R>(mut ar: R, zip_path: &Path, state: &RwLock<State>, opts:
                             //continue;
                         }
 
-                        let hash = Arc::new(hasher.finalize());
+                        let hash = Arc::new(hasher.finalize().into());
 
                         let path = zip_path.join(name);
 

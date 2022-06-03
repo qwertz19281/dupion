@@ -4,7 +4,6 @@ use std::os::unix::fs::MetadataExt;
 use platter_walk::{Order, ToScan};
 use vfs::VfsId;
 use reapfrog::MultiFileReadahead;
-use sha2::{Digest, Sha512};
 use std::{sync::{atomic::Ordering, Arc}, io::{Read, Write, self}, fs::{Metadata, File}};
 use util::*;
 use zip::{open_zip, decode_zip};
@@ -261,7 +260,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
 
                     opts.log_verbosed("HASH", &p);
 
-                    let mut hasher = Sha512::new();
+                    let mut hasher = blake3::Hasher::new();
 
                     let mut reader = &mut reader;
 
@@ -337,13 +336,13 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                     }
                     local_read_lock.unlock();
 
-                    let hash = hasher.finalize();
+                    let hash = Arc::new(hasher.finalize().into());
 
                     let mut s = s.write();
 
                     let entry = &mut s.tree[id];
 
-                    entry.file_hash = Some(Arc::new(hash));
+                    entry.file_hash = Some(hash);
 
                     if opts.zip_by_extension(&p) {
                         entry.is_dir = true;

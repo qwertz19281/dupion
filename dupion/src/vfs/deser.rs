@@ -8,7 +8,6 @@ use serde_derive::*;
 use std::borrow::Cow;
 use std::hash::BuildHasherDefault;
 use std::{io::BufReader, sync::atomic::Ordering};
-use sha2::digest::generic_array::GenericArray;
 use state::State;
 use util::{vfs_store_notif, Hash, Size};
 use std::fs::File;
@@ -151,13 +150,13 @@ impl State {
 }
 
 pub fn encode_hash(h: &Hash) -> String {
-    base64::encode(&***h)
+    base64::encode(&h[..])
 }
 
 type InternSet = hashbrown::HashSet<Hash,BuildHasherDefault<FxHasher>>;
 
 pub fn decode_and_intern_hash(h: &str, interner: &mut InternSet) -> Hash {
-    let mut decoded = GenericArray::default();
+    let mut decoded = [0u8;32];
     assert_eq!(
         decode_config_slice(h, base64::STANDARD, &mut decoded).unwrap(),
         decoded.len()

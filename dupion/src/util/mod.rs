@@ -1,7 +1,5 @@
 use super::*;
 use std::sync::Arc;
-use sha2::digest::generic_array::GenericArray;
-use sha2::digest::generic_array::typenum::U64;
 use group::{SizeGroup, HashGroup};
 use std::{io::{Seek, Read}, sync::{atomic::{Ordering, AtomicUsize, AtomicBool, AtomicU64}}, time::Duration, ops::{DerefMut, Deref}};
 use parking_lot::RawMutex;
@@ -11,7 +9,7 @@ use maligned::align_first;
 use maligned::A4096;
 
 pub type Size = u64;
-pub type Hash = Arc<GenericArray<u8,U64>>;
+pub type Hash = Arc<[u8;32]>;
 
 pub type Sizes = rustc_hash::FxHashMap<Size,SizeGroup>;
 pub type Hashes = rustc_hash::FxHashMap<Hash,HashGroup>;

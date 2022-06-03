@@ -3,7 +3,6 @@ use state::State;
 use group::HashGroup;
 use vfs::VfsId;
 use util::{Hash, Size};
-use sha2::{Digest, Sha512};
 use std::{sync::Arc, io::Write, cmp::Reverse};
 
 pub fn export(b: &mut State) -> Vec<HashGroup> {
@@ -77,20 +76,20 @@ pub fn calculate_dir_hash(state: &mut State, id: VfsId) -> Result<(Size,Hash),()
 
     hashes.sort();
 
-    let mut hasher = Sha512::new();
+    let mut hasher = blake3::Hasher::new();
 
     for (h,n) in hashes {
         hasher.write(n.as_ref()).unwrap();
-        hasher.write(&**h).unwrap();
+        hasher.write(&*h).unwrap();
     }
 
-    let hash = Arc::new(hasher.finalize());
+    let hash = Arc::new(hasher.finalize().into());
 
     //eprintln!("Hashed Dir {}",state.tree[id].path.to_string_lossy());
     //eprintln!("{} {}",size,encode_hash(&hash));
 
     state.tree[id].dir_size = Some(size);
-    state.tree[id].dir_hash = Some(hash.clone());
+    state.tree[id].dir_hash = Some(Arc::clone(&hash));
     state.tree[id].valid = true;
 
     state.push_to_size_group(id,false,true).unwrap();
