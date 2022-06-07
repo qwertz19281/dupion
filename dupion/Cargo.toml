@@ -2,7 +2,7 @@
 name = "dupion"
 version = "0.2.0"
 authors = ["qwertz19281 <dellen903@gmail.com>"]
-edition = "2018"
+edition = "2021"
 license = "MIT OR Apache-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -20,7 +20,7 @@ base64 = "0.13"
 libc = ">=0.2.70"
 parking_lot = "0.12"
 num_cpus = "1.13"
-sysinfo = "0.23"
+sysinfo = "0.24"
 btrfs = { path = "../rust-btrfs" }
 rustc-hash = "1.1"
 

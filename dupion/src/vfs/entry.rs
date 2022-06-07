@@ -30,6 +30,8 @@ pub struct VfsEntry {
     pub phys: Option<u64>,
 }
 
+const _: () = assert!(std::mem::size_of::<VfsEntry>() == 176);
+
 impl VfsEntry {
     pub fn new(path: Arc<Path>) -> Self {
         Self{

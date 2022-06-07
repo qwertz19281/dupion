@@ -7,8 +7,7 @@
 //! is required.
 
 use crate::linux::imports::*;
-use nix::Errno as NixErrno;
-use nix::Error as NixError;
+use nix::errno::Errno as NixErrno;
 
 // ---------- get filesystem info
 
@@ -27,7 +26,7 @@ pub fn get_filesystem_info(file_descriptor: libc::c_int) -> Result<FilesystemInf
 
         num_devices: c_fs_info_args.num_devices,
 
-        filesystem_id: Uuid::from_bytes(&c_fs_info_args.filesystem_id).unwrap(),
+        filesystem_id: Uuid::from_bytes(c_fs_info_args.filesystem_id),
     })
 }
 
@@ -45,11 +44,9 @@ pub fn get_device_info(
             &mut c_dev_info_args as *mut IoctlDevInfoArgs,
         )
     } {
-        Err(NixError::Sys(NixErrno::ENODEV)) => return Ok(None),
+        Err(NixErrno::ENODEV) => return Ok(None),
 
-        Err(NixError::Sys(errno)) => return Err(format!("Os error {} getting device info", errno)),
-
-        Err(error) => return Err(format!("Unknown error getting device info: {}", error)),
+        Err(errno) => return Err(format!("Error getting device info: {}", errno)),
 
         _ => (),
     };
@@ -57,7 +54,7 @@ pub fn get_device_info(
     Ok(Some(DeviceInfo {
         device_id: c_dev_info_args.devid,
 
-        uuid: Uuid::from_bytes(&c_dev_info_args.uuid).unwrap(),
+        uuid: Uuid::from_bytes(c_dev_info_args.uuid),
 
         bytes_used: c_dev_info_args.bytes_used,
 
