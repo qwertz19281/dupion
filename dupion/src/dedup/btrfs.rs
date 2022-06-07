@@ -22,7 +22,7 @@ impl Deduper for BtrfsDedup {
 
         let mut cache_info = CacheUsable::new(256*1024*1024);
 
-        let s = state.write();
+        let mut s = state.write();
 
         while go < groups.len() {
             let cache_max = cache_info.get();
@@ -222,6 +222,8 @@ impl Deduper for BtrfsDedup {
                     let path = &s.tree[id].path;
                     if i.status == DedupeRangeStatus::Differs {
                         eprintln!("\t\tNot deduped {}",opts.path_disp(path));
+                    } else {
+                        s.tree[id].dedup_state = Some(true);
                     }
                 }
 
