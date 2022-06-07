@@ -1,12 +1,12 @@
 [package]
 name = "libarchive"
-version = "0.5.0"
+version = "0.0.0"
 authors = ["Jamie Winsor <reset@chef.io>"]
 license = "Apache-2.0"
 repository = "https://github.com/chef/libarchive-rust"
 description = "A safe Rust API for authoring and extracting archives with libarchive"
 keywords = ["libarchive", "archive", "tar", "zip"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 libc = ">= 0.2.0"
