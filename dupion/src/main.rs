@@ -16,6 +16,8 @@ fn main() {
         force_absolute_paths: o.absolute,
         read_buffer:       ((o.read_buffer * 1048576.0) as usize +1024)/4096*4096,
         prefetch_budget: ((o.prefetch_budget * 1048576.0) as u64 +1024)/4096*4096,
+        dedup_budget: ((o.dedup_budget * 1048576.0) as u64 +1024)/4096*4096,
+        cache_dropbehind: o.cache_dropbehind,
         pass_1_hash: o.pass_1_hash,
         archive_cache_mem: ((o.archive_cache_mem * 1048576.0) as usize +1024)/4096*4096,
         dir_prefetch: o.dir_prefetch,
@@ -208,34 +210,38 @@ pub fn get_threads() -> usize {
 #[derive(StructOpt)]
 #[structopt(name = "dupion", about = "Find duplicate files and folders")]
 pub struct OptInput {
-    #[structopt(long,default_value="1.0",help="EXPERIMENTAL read buffer in MiB")]
+    #[structopt(long,default_value="1.0",help="EXPERIMENTAL Read buffer in MiB")]
     pub read_buffer: f64,
-    #[structopt(long,default_value="16.0",help="EXPERIMENTAL prefetch budget in MiB")]
+    #[structopt(long,default_value="32.0",help="EXPERIMENTAL Prefetch budget in MiB")]
     pub prefetch_budget: f64,
-    #[structopt(long,default_value="1024.0",help="threaded archive read cache limit in MiB")]
+    #[structopt(long,default_value="256.0",help="EXPERIMENTAL Dedup budget in MiB")]
+    pub dedup_budget: f64,
+    #[structopt(long,default_value="1024.0",help="Threaded archive read cache limit in MiB")]
     pub archive_cache_mem: f64,
-    #[structopt(short,long,default_value="0",help="number of threads for zip decoding, 0 = RAYON_NUM_THREADS or num_cpu logical count")]
+    #[structopt(short,long,default_value="0",help="Number of threads for zip decoding, 0 = RAYON_NUM_THREADS or num_cpu logical count")]
     pub threads: usize,
-    #[structopt(short,long,default_value="2",help="show shadowed files/directory (shadowed are e.g. childs of duplicate dirs) (0-3)\n0: show ALL, including pure shadowed groups\n1: show all except pure shadowed groups\n2: show shadowed only if there is also one non-shadowed in the group\n3: never show shadowed\n")]
+    #[structopt(short,long,default_value="2",help="Show shadowed files/directory (shadowed are e.g. childs of duplicate dirs) (0-3)\n0: show ALL, including pure shadowed groups\n1: show all except pure shadowed groups\n2: show shadowed only if there is also one non-shadowed in the group\n3: never show shadowed\n")]
     pub shadow_rule: u8,
-    #[structopt(short,long,default_value="0",help="file lower size limit for scanning in bytes")]
+    #[structopt(short,long,default_value="0",help="File lower size limit for scanning in bytes")]
     pub min_size: u64,
 
-    #[structopt(short,long,help="spam stderr")]
+    #[structopt(short,long,help="Verbose")]
     pub verbose: bool,
-    #[structopt(long,help="force to display absolute paths")]
+    #[structopt(long,help="Force to display absolute paths")]
     pub absolute: bool,
+    #[structopt(long,help="Enable cache dropbehind to reduce cache pressure in hash scan. Can affect performance positively or negatively")]
+    pub cache_dropbehind: bool,
     #[structopt(long,help="EXPERIMENTAL Enable hashing in 1st pass. Can affect performance positively or negatively")]
     pub pass_1_hash: bool,
-    #[structopt(long,help="don't read or write cache file")]
+    #[structopt(long,help="Don't read or write cache file")]
     pub no_cache: bool,
-    #[structopt(long,help="abort after pass 1")]
+    #[structopt(long,help="Abort after pass 1")]
     pub bench_pass_1: bool,
-    #[structopt(long,help="EXPERIMENTAL prefetch directory metadata, eventually fails on non-root")]
+    #[structopt(long,help="EXPERIMENTAL Prefetch directory metadata, eventually fails on non-root")]
     pub dir_prefetch: bool,
-    #[structopt(short="a",long,help="also search inside archives. requires to scan and hash every archive")]
+    #[structopt(short="a",long,help="Also search inside archives. requires to scan and hash every archive")]
     pub read_archives: bool, //TODO: build mode w/o archive support
-    #[structopt(long,help="EXPERIMENTAL don't scan and reuse cached data")]
+    #[structopt(long,help="EXPERIMENTAL Don't scan for files, use found files from cache instead")]
     pub no_scan: bool,
 
     #[structopt(short,long,parse(from_str),default_value="g",help="Results output mode (g/t/d/-)\ngroups: duplicate entries in sorted size groups\ntree: json as tree\ndiff: like tree, but exact dir comparision, reveals diffs and supersets\n-: disabled\n")]
@@ -243,7 +249,7 @@ pub struct OptInput {
     #[structopt(long,default_value="",help="EXPERIMENTAL Deduplication mode (-/btrfs). Disabled by default")]
     pub dedup: String,
 
-    #[structopt(parse(from_os_str),help="directories to scan. cwd if none given")]
+    #[structopt(parse(from_os_str),help="Directories to scan. cwd if none defined")]
     pub dirs: Vec<PathBuf>,
 }
 

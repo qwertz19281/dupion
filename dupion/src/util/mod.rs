@@ -1,5 +1,5 @@
 use super::*;
-use std::sync::Arc;
+use std::{sync::Arc, ops::Range};
 use group::{SizeGroup, HashGroup};
 use std::{io::{Seek, Read}, sync::{atomic::{Ordering, AtomicUsize, AtomicBool, AtomicU64}}, time::Duration, ops::{DerefMut, Deref}};
 use parking_lot::RawMutex;
@@ -162,14 +162,14 @@ impl Drop for ZeroLock {
 }
 
 pub struct CacheUsable {
-    max: u64,
+    range: Range<u64>,
     sys: System,
 }
 
 impl CacheUsable {
-    pub fn new(max: u64) -> Self {
+    pub fn new(range: Range<u64>) -> Self {
         Self{
-            max,
+            range,
             sys: System::new(),
         }
     }
@@ -177,8 +177,8 @@ impl CacheUsable {
     pub fn get(&mut self) -> u64 {
         self.sys.refresh_memory();
         let sys_available = self.sys.total_memory() - self.sys.used_memory();
-        let for_caching = (sys_available*1000/2+1024)/4096*4096;
-        for_caching.min(self.max)
+        let for_caching = (sys_available*1000/2+1024)/65536*65536;
+        for_caching.clamp(self.range.start,self.range.end)
     }
 }
 

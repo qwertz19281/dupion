@@ -142,8 +142,8 @@ impl State {
             if path.is_file() {
                 let reader= tryz!(File::open(&path));
                 let reader = BufReader::new(reader);
-                let entries: VfsEntries = tryz!(serde_json::from_reader(reader));
-                self.tree.entries = entries.0;
+                let VfsEntries(entries) = tryz!(serde_json::from_reader(reader));
+                self.tree.entries = entries;
             }
         }
     }

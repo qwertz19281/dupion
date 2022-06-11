@@ -15,12 +15,13 @@ impl Deduper for BtrfsDedup {
         // all files in batch will be opened 
 
         let real = true;
+        let file_split_round = 1024*1024*12;
 
         let mut go = 0;
 
         let mut current = Vec::new();
 
-        let mut cache_info = CacheUsable::new(256*1024*1024);
+        let mut cache_info = CacheUsable::new(file_split_round*2 .. opts.dedup_budget);
 
         let mut s = state.write();
 
@@ -45,23 +46,32 @@ impl Deduper for BtrfsDedup {
                     break;
                 }
 
-                let can_take = group.range.end - group.range.start;
-                let old_take = cache_take;
+                let size = group.range.end - group.range.start;
 
-                if old_take + can_take*group.sum > cache_max {
-                    // split the group in 2 size ranges, the first for this batch, the last for the next batch
-                    let take = (cache_max - cache_take)/group.sum;
-                    assert!(take < can_take);
+                if cache_take + size*group.sum > cache_max {
+                    if size*group.sum > cache_max { // avoid split operation on tiny files
+                        // split the group in 2 size ranges, the first for this batch, the last for the next batch
+                        let take = (cache_max - cache_take)/group.sum;
+                        let mut take = take/file_split_round*file_split_round;
+                        assert!(take < size);
 
-                    group.range.end = group.range.start+take;
-                    groups[go].range.start = group.range.end;
+                        if take == 0 && cache_take == 0 {
+                            // prevent starving on groups with many files
+                            take = size.min(file_split_round);
+                        }
 
+                        group.range.end = group.range.start+take;
+                        groups[go].range.start = group.range.end;
+
+                        if take != 0 {
+                            current.push(group);
+                        }
+                    }
                     cache_take = cache_max;
-                    current.push(group);
                     break;
                 }else{
                     //would fit into cache
-                    cache_take += can_take*group.sum;
+                    cache_take += size*group.sum;
                     current.push(group);
                     go+=1;
                 }
@@ -151,7 +161,7 @@ impl Deduper for BtrfsDedup {
                 }
             }
 
-            readahead.sort_by_key(|v| v.0 );
+            readahead.sort_by_key(|&(pos,..)| pos );
 
             if real {
                 for (_,fd,range) in &readahead {

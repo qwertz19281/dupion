@@ -221,16 +221,17 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
 
         let mut reaper = MultiFileReadahead::new(filtered);
 
-        reaper.dropbehind(false);
+        reaper.dropbehind(opts.cache_dropbehind);
 
-        //let huge_zip_thres = 256*1024*1024;
         let huge_zip_thres = opts.archive_cache_mem as u64 / opts.threads as u64;
 
-        let mut buf = vec![0;opts.read_buffer];
+        let read_buffer = opts.read_buffer;
+
+        let mut buf = vec![0;read_buffer];
 
         let mut local_read_lock = read_mutex.clone();
 
-        let mut cache_watcher = CacheUsable::new(opts.prefetch_budget);
+        let mut cache_watcher = CacheUsable::new(1024*1024 .. opts.prefetch_budget);
 
         local_read_lock.lock();
         //local_read_lock = None;
@@ -270,7 +271,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                         let mut off = 0;
 
                         loop {
-                            match reader.read(&mut buf[off..(off+opts.read_buffer).min(size as usize)]) {
+                            match reader.read(&mut buf[off..(off+read_buffer).min(size as usize)]) {
                                 Ok(0) => break,
                                 Ok(n) => {
                                     hasher.write(&buf[off..off+n]).unwrap();
@@ -318,7 +319,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                             });
                         }
                         loop {
-                            match reader.read(&mut buf[0..opts.read_buffer]) {
+                            match reader.read(&mut buf[0..read_buffer]) {
                                 Ok(0) => break,
                                 Ok(n) => {
                                     hasher.write(&buf[..n]).unwrap();

@@ -65,7 +65,7 @@ impl<'a> Serialize for DirEntry<'a> {
             })
             .collect::<Vec<_>>();
         
-        childion.sort_by_key(|v| (v.3,Reverse(v.0.max(1).min(2)),Reverse(v.2)) );
+        childion.sort_by_key(|&(pos,_,size,prio)| (prio,Reverse(pos.max(1).min(2)),Reverse(size)) );
 
         let iter = childion.iter()
             .map(|(dups,id,size,_)| {
