@@ -24,49 +24,32 @@ pub trait Deduper {
         for e in s.hashes.values() {
             if e.size == 0 {continue;} //TODO proper min size option
 
-            let mut senpai: Option<VfsId> = e.entries.iter()
-                .find(|(typ,id)| *typ == VfsEntryType::File && s.tree[*id].phys.is_some() && s.tree[*id].dedup_state == Some(true) )
-                .map(|(_,id)| id )
-                .cloned();
-
             let mut candidates: Vec<VfsId> = e.entries.iter()
-                .filter(|(typ,id)| *typ == VfsEntryType::File && s.tree[*id].phys.is_some() && s.tree[*id].dedup_state.is_none() )
-                .map(|(_,id)| *id )
+                .filter(|&&(typ,id)| typ == VfsEntryType::File && s.tree[id].phys.is_some() )
+                .map(|&(_,id)| id )
                 .collect();
 
-            if candidates.is_empty() {continue;}
+            if candidates.len() < 2 {continue;}
 
-            let mut phys_sum = 0;
+            let avg_phys = candidates.iter()
+                .map(|&c| s.tree[c].phys.unwrap() )
+                .sum::<u64>() / (candidates.len() as u64);
 
-            for &c in &candidates {
-                phys_sum += s.tree[c].phys.unwrap();
-            }
-
-            let cand_avg_phys = phys_sum / candidates.len() as u64;
-
-            if senpai.is_none() {
-                if candidates.len() < 2 {continue;}
-
-                let (idx,new) = candidates.iter()
+            let senpai = {
+                let (idx,&new) = candidates.iter()
                     .enumerate()
-                    .min_by_key(|(_,id)| distance(cand_avg_phys, s.tree[**id].phys.unwrap()) )
+                    .min_by_key(|(_,&id)| distance(avg_phys, s.tree[id].phys.unwrap()) )
                     .unwrap();
 
-                senpai = Some(*new);
-
                 candidates.remove(idx);
-            }
 
-            let senpai = senpai.unwrap();
+                new
+            };
 
             candidates.retain(|&id| id != senpai && s.tree[id].phys.unwrap() != s.tree[senpai].phys.unwrap() );
-            if candidates.is_empty() {continue;}
             candidates.sort_by_key(|&id| s.tree[id].phys.unwrap() );
             candidates.truncate(511); //TODO real max open file
             candidates.shrink_to_fit();
-            
-            let avg_phys =
-                (phys_sum + s.tree[senpai].phys.unwrap()) / (candidates.len() as u64 +1);
 
             let size = s.tree[senpai].file_size.unwrap();
 
