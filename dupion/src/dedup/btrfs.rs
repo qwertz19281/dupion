@@ -64,22 +64,24 @@ impl Deduper for BtrfsDedup {
                         groups[go].range.start = group.range.end;
 
                         if take != 0 {
-                            current.push(group);
+                            current.push((group, take == size));
                         }
                     }
                     cache_take = cache_max;
                     break;
-                }else{
+                } else {
                     //would fit into cache
                     cache_take += size*group.sum;
-                    current.push(group);
+                    if size != 0 {
+                        current.push((group, true));
+                    }
                     go+=1;
                 }
             }
 
             eprintln!("Batch {} files, {}B",current.len(),SizeFormatterBinary::new(cache_take));
             
-            let mut opened: Vec<(DedupGroup,FileDescriptor,Vec<FileDescriptor>)> = Vec::with_capacity(current.len());
+            let mut opened: Vec<(DedupGroup,FileDescriptor,Vec<FileDescriptor>,bool)> = Vec::with_capacity(current.len());
 
             let mut batch_file_sum = 0;
 
@@ -113,7 +115,7 @@ impl Deduper for BtrfsDedup {
             };
 
             // open all the relevant files
-            'g: for group in current.drain(..) {
+            'g: for (group,last_part) in current.drain(..) {
                 eprintln!(
                     "\tGroup {}B..{}B -> {} ({})",
                     SizeFormatterBinary::new(group.range.start),
@@ -139,13 +141,13 @@ impl Deduper for BtrfsDedup {
 
                 batch_file_sum += group.dups.len()+1;
 
-                opened.push((group,senpai_fd,dups_fd));
+                opened.push((group,senpai_fd,dups_fd,last_part));
             }
 
             let mut readahead: Vec<(u64,&FileDescriptor,&Range<u64>)> = Vec::with_capacity(batch_file_sum);
 
             // for readahead, retrieve and sort by the physical pos, then fadvise
-            for (group,senpai_fd,dups_fd) in &opened {
+            for (group,senpai_fd,dups_fd,_) in &opened {
                 readahead.push((
                     s.tree[group.senpai].phys.unwrap(),
                     senpai_fd,
@@ -187,7 +189,7 @@ impl Deduper for BtrfsDedup {
             }
 
             // issue dedup_range ioctl for the dup ranges
-            for (group,senpai_fd,dups_fd) in &opened {
+            for (group,senpai_fd,dups_fd,last_part) in opened {
                 assert_eq!(dups_fd.len(),group.dups.len());
                 let senpai_path = &s.tree[group.senpai].path;
                 eprintln!(
@@ -199,7 +201,7 @@ impl Deduper for BtrfsDedup {
                 );
 
                 let dest_infos: Vec<_> = dups_fd.iter()
-                    .map(|fd| DedupeRangeDestInfo{
+                    .map(|fd| DedupeRangeDestInfo {
                         dest_fd: fd.get_value() as i64,
                         dest_offset: group.range.start,
                         bytes_deduped: 0,
@@ -207,7 +209,7 @@ impl Deduper for BtrfsDedup {
                     })
                     .collect();
 
-                let mut dedup_range = DedupeRange{
+                let mut dedup_range = DedupeRange {
                     src_offset: group.range.start,
                     src_length: group.range.end - group.range.start,
                     dest_infos,
@@ -223,7 +225,9 @@ impl Deduper for BtrfsDedup {
                 }
 
                 disp_processed_bytes.fetch_add(group.dups.len() as u64 * (group.range.end - group.range.start),Ordering::Relaxed);
-                disp_processed_files.fetch_add(group.dups.len() as u64,Ordering::Relaxed);
+                if last_part {
+                    disp_processed_files.fetch_add(group.dups.len() as u64,Ordering::Relaxed);
+                }
 
                 let mut deduped = 0;
 
