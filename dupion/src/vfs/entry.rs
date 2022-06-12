@@ -98,10 +98,10 @@ impl VfsEntry {
         }
     }
     pub fn file_props(&self) -> (Option<Size>,Option<Hash>) {
-        (self.file_size.clone(),self.file_hash.clone())
+        (self.file_size,self.file_hash.clone())
     }
     pub fn dir_props(&self) -> (Option<Size>,Option<Hash>) {
-        (self.dir_size.clone(),self.dir_hash.clone())
+        (self.dir_size,self.dir_hash.clone())
     }
 
     pub fn exists(&self) -> bool {

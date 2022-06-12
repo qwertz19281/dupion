@@ -48,7 +48,7 @@ impl<'a> EntryIntermediate<'a> {
             path: Cow::Borrowed(entry.path.to_str().unwrap()),
             ctime: entry.ctime,
             file_size: entry.file_size,
-            file_hash: file_hash.map(|a| Cow::Owned(a) ),
+            file_hash: file_hash.map(Cow::Owned),
             childs: entry.childs.clone(),
             was_file: entry.is_file || (entry.was_file && !entry.valid),
             was_dir: entry.is_dir || (entry.was_dir && !entry.valid),

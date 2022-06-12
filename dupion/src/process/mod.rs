@@ -79,8 +79,8 @@ pub fn calculate_dir_hash(state: &mut State, id: VfsId) -> Result<(Size,Hash),()
     let mut hasher = blake3::Hasher::new();
 
     for (h,n) in hashes {
-        hasher.write(n.as_ref()).unwrap();
-        hasher.write(&*h).unwrap();
+        hasher.update(n.as_ref());
+        hasher.update(&*h);
     }
 
     let hash = Arc::new(hasher.finalize().into());

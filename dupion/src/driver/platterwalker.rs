@@ -274,7 +274,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                             match reader.read(&mut buf[off..(off+read_buffer).min(size as usize)]) {
                                 Ok(0) => break,
                                 Ok(n) => {
-                                    hasher.write(&buf[off..off+n]).unwrap();
+                                    hasher.update(&buf[off..off+n]);
                                     off+=n;
                                     disp_processed_bytes.fetch_add(n as u64,Ordering::Relaxed);
                                 },
@@ -322,7 +322,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                             match reader.read(&mut buf[0..read_buffer]) {
                                 Ok(0) => break,
                                 Ok(n) => {
-                                    hasher.write(&buf[..n]).unwrap();
+                                    hasher.update(&buf[..n]);
                                     disp_processed_bytes.fetch_add(n as u64,Ordering::Relaxed);
                                 },
                                 Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
