@@ -47,6 +47,7 @@ pub trait Deduper {
             };
 
             candidates.retain(|&id| id != senpai && s.tree[id].phys.unwrap() != s.tree[senpai].phys.unwrap() );
+            if candidates.is_empty() {continue;}
             candidates.sort_by_key(|&id| s.tree[id].phys.unwrap() );
             candidates.truncate(511); //TODO real max open file
             candidates.shrink_to_fit();
