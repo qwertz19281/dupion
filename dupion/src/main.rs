@@ -2,12 +2,12 @@ use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWa
 use std::{time::Duration, sync::{atomic::Ordering}, path::PathBuf, io::Write};
 use size_format::SizeFormatterBinary;
 use parking_lot::RwLock;
-use structopt::*;
+use clap::Parser;
 
 fn main() {
     setlocale_hack();
 
-    let o = OptInput::from_args();
+    let o = OptInput::parse();
 
     let opts = Box::leak(Box::new(Opts{
         paths: o.dirs.clone(),
@@ -207,49 +207,76 @@ pub fn get_threads() -> usize {
     }
 }
 
-#[derive(StructOpt)]
-#[structopt(name = "dupion", about = "Find duplicate files and folders")]
+#[derive(Parser)]
+#[clap(version, about)]
 pub struct OptInput {
-    #[structopt(long,default_value="1.0",help="EXPERIMENTAL Read buffer in MiB")]
+    /// EXPERIMENTAL Read buffer in MiB
+    #[clap(long, default_value_t = 1.0)]
+    /// EXPERIMENTAL Prefetch budget in MiB
     pub read_buffer: f64,
-    #[structopt(long,default_value="32.0",help="EXPERIMENTAL Prefetch budget in MiB")]
+    #[clap(long, default_value_t = 32.0)]
     pub prefetch_budget: f64,
-    #[structopt(long,default_value="256.0",help="EXPERIMENTAL Dedup budget in MiB")]
+    /// EXPERIMENTAL Dedup budget in MiB
+    #[clap(long, default_value_t = 256.0)]
     pub dedup_budget: f64,
-    #[structopt(long,default_value="1024.0",help="Threaded archive read cache limit in MiB")]
+    /// Threaded archive read cache limit in MiB
+    #[clap(long, default_value_t = 1024.0)]
     pub archive_cache_mem: f64,
-    #[structopt(short,long,default_value="0",help="Number of threads for zip decoding, 0 = RAYON_NUM_THREADS or num_cpu logical count")]
+    /// Number of threads for zip decoding, 0 = RAYON_NUM_THREADS or num_cpu logical count
+    #[structopt(short, long, default_value_t = 0)]
     pub threads: usize,
-    #[structopt(short,long,default_value="2",help="Show shadowed files/directory (shadowed are e.g. childs of duplicate dirs) (0-3)\n0: show ALL, including pure shadowed groups\n1: show all except pure shadowed groups\n2: show shadowed only if there is also one non-shadowed in the group\n3: never show shadowed\n")]
+    /// Show shadowed files/directory (shadowed are e.g. childs of duplicate dirs) (0-3)
+    /// 0: show ALL, including pure shadowed groups
+    /// 1: show all except pure shadowed groups
+    /// 2: show shadowed only if there is also one non-shadowed in the group
+    /// 3: never show shadowed
+    #[structopt(short, long, default_value_t = 2, verbatim_doc_comment)]
     pub shadow_rule: u8,
-    #[structopt(short,long,default_value="0",help="File lower size limit for scanning in bytes")]
+    /// File lower size limit for scanning in bytes  
+    #[clap(short, long, default_value_t = 0)]
     pub min_size: u64,
 
-    #[structopt(short,long,help="Verbose")]
+    /// Verbose
+    #[clap(short, long)]
     pub verbose: bool,
-    #[structopt(long,help="Force to display absolute paths")]
+    /// Force to display absolute paths
+    #[clap(long)]
     pub absolute: bool,
-    #[structopt(long,help="Enable cache dropbehind to reduce cache pressure in hash scan. Can affect performance positively or negatively")]
+    /// Enable cache dropbehind to reduce cache pressure in hash scan. Can affect performance positively or negatively
+    #[clap(long)]
     pub cache_dropbehind: bool,
-    #[structopt(long,help="EXPERIMENTAL Enable hashing in 1st pass. Can affect performance positively or negatively")]
+    /// EXPERIMENTAL Enable hashing in 1st pass. Can affect performance positively or negatively
+    #[clap(long)]
     pub pass_1_hash: bool,
-    #[structopt(long,help="Don't read or write cache file")]
+    /// Don't read or write cache file
+    #[clap(long)]
     pub no_cache: bool,
-    #[structopt(long,help="Abort after pass 1")]
+    /// Abort after pass 1
+    #[clap(long)]
     pub bench_pass_1: bool,
-    #[structopt(long,help="EXPERIMENTAL Prefetch directory metadata, eventually fails on non-root")]
+    /// EXPERIMENTAL Prefetch directory metadata, eventually fails on non-root
+    #[clap(long)]
     pub dir_prefetch: bool,
-    #[structopt(short="a",long,help="Also search inside archives. requires to scan and hash every archive")]
+    /// Also search inside archives. requires to scan and hash every archive
+    #[clap(short='a', long)]
     pub read_archives: bool, //TODO: build mode w/o archive support
-    #[structopt(long,help="EXPERIMENTAL Don't scan for files, use found files from cache instead")]
+    /// EXPERIMENTAL Don't scan for files, use found files from cache instead
+    #[clap(long)]
     pub no_scan: bool,
 
-    #[structopt(short,long,parse(from_str),default_value="g",help="Results output mode (g/t/d/-)\ngroups: duplicate entries in sorted size groups\ntree: json as tree\ndiff: like tree, but exact dir comparision, reveals diffs and supersets\n-: disabled\n")]
+    /// Results output mode (g/t/d/-)
+    /// groups: duplicate entries in sorted size groups
+    /// tree: json as tree
+    /// diff: like tree, but exact dir comparision, reveals diffs and supersets
+    /// -: disabled
+    #[structopt(short, long, parse(from_str), default_value = "g", verbatim_doc_comment)]
     pub output: OutputMode,
-    #[structopt(long,default_value="",help="EXPERIMENTAL Deduplication mode (-/btrfs). Disabled by default")]
+    /// EXPERIMENTAL Deduplication mode (-/btrfs). Disabled by default
+    #[clap(long, default_value = "")]
     pub dedup: String,
 
-    #[structopt(parse(from_os_str),help="Directories to scan. cwd if none defined")]
+    /// Directories to scan. cwd if none defined
+    #[clap(parse(from_os_str))]
     pub dirs: Vec<PathBuf>,
 }
 
