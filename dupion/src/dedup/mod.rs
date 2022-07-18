@@ -49,13 +49,26 @@ pub trait Deduper {
             candidates.retain(|&id| id != senpai && s.tree[id].phys.unwrap() != s.tree[senpai].phys.unwrap() );
             if candidates.is_empty() {continue;}
             candidates.sort_by_key(|&id| s.tree[id].phys.unwrap() );
-            candidates.truncate(511); //TODO real max open file
-            candidates.shrink_to_fit();
 
             let size = s.tree[senpai].file_size.unwrap();
 
             disp_relevant_bytes.fetch_add(candidates.len() as u64*size,Ordering::Relaxed);
             disp_relevant_files.fetch_add(candidates.len() as u64,Ordering::Relaxed);
+
+            while candidates.len() > 127 { //TODO move to specific dedup handler
+                let remainder = candidates.split_off(127);
+
+                dest.push(DedupGroup{
+                    sum: candidates.len() as u64 +1,
+                    senpai,
+                    dups: candidates,
+                    range: 0..size,
+                    file_size: size,
+                    avg_phys,
+                });
+
+                candidates = remainder;
+            }
 
             dest.push(DedupGroup{
                 sum: candidates.len() as u64 +1,
