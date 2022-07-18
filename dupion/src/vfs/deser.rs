@@ -58,16 +58,16 @@ impl<'a> EntryIntermediate<'a> {
         }
     }
 
-    fn into_entry(self, interner: &mut InternSet) -> VfsEntry {
+    fn into_entry(self, interner: &mut InternSet) -> anyhow::Result<VfsEntry> {
         let path: Arc<Path> = PathBuf::from(self.path.as_ref()).into();
 
-        VfsEntry{
+        Ok(VfsEntry{
             plc: to_plc(&path),
             path,
             ctime: self.ctime,
             file_size: self.file_size,
             dir_size: None,
-            file_hash: self.file_hash.map(|h| decode_and_intern_hash(&h, interner) ),
+            file_hash: self.file_hash.map(|h| decode_and_intern_hash(&h, interner) ).transpose()?,
             dir_hash: None,
             childs: self.childs,
             valid: false,
@@ -83,7 +83,7 @@ impl<'a> EntryIntermediate<'a> {
             treediff_stat: 0,
             dedup_state: self.dedup_state,
             phys: None,
-        }
+        })
     }
 }
 
@@ -112,7 +112,7 @@ impl<'de> Deserialize<'de> for VfsEntries {
                 let mut entries = Vec::with_capacity(16384);
 
                 while let Some(value) = seq.next_element::<EntryIntermediate>()? {
-                    entries.push(value.into_entry(&mut self.interner));
+                    entries.push(value.into_entry(&mut self.interner).map_err(serde::de::Error::custom)?);
                 }
 
                 Ok(VfsEntries(entries))
@@ -129,23 +129,34 @@ impl<'de> Deserialize<'de> for VfsEntries {
 
 impl State {
     pub fn eventually_store_vfs(&self, force: bool) {
+        self.try_eventually_store_vfs(force).unwrap_or_else(|e| eprintln!("Error writing cache: {e}") )
+    }
+
+    pub fn try_eventually_store_vfs(&self, force: bool) -> anyhow::Result<()> {
         if self.cache_allowed && (force || vfs_store_notif.swap(false,Ordering::Relaxed)) {
             let mut stor = Vec::with_capacity(1024*1024);
-            tryz!(serde_json::to_writer(&mut stor, &self.tree.entries));
-            tryz!(std::fs::write("./dupion_cache",&stor));
+            serde_json::to_writer(&mut stor, &self.tree.entries)?;
+            std::fs::write("./dupion_cache",&stor)?;
             //eprintln!("Wrote cache");
         }
+        Ok(())
     }
+
     pub fn eventually_load_vfs(&mut self) {
+        self.try_eventually_load_vfs().unwrap_or_else(|e| eprintln!("Error reading cache: {e}") )
+    }
+
+    pub fn try_eventually_load_vfs(&mut self) -> anyhow::Result<()> {
         if self.cache_allowed {
             let path = PathBuf::from("./dupion_cache");
             if path.is_file() {
-                let reader= tryz!(File::open(&path));
+                let reader = File::open(&path)?;
                 let reader = BufReader::new(reader);
-                let VfsEntries(entries) = tryz!(serde_json::from_reader(reader));
+                let VfsEntries(entries) = serde_json::from_reader(reader)?;
                 self.tree.entries = entries;
             }
         }
+        Ok(())
     }
 }
 
@@ -155,34 +166,20 @@ pub fn encode_hash(h: &Hash) -> String {
 
 type InternSet = hashbrown::HashSet<Hash,BuildHasherDefault<FxHasher>>;
 
-pub fn decode_and_intern_hash(h: &str, interner: &mut InternSet) -> Hash {
+pub fn decode_and_intern_hash(h: &str, interner: &mut InternSet) -> anyhow::Result<Hash> {
+    if h.len() != 44 {bail!("Invalid hash length");}
+
     let mut decoded = [0u8;32];
     assert_eq!(
-        decode_config_slice(h, base64::STANDARD, &mut decoded).unwrap(),
+        decode_config_slice(h, base64::STANDARD, &mut decoded)?,
         decoded.len()
     );
 
-    interner.get_or_insert_with(&decoded, |v| {
-        debug_assert_eq!(v, &decoded);
-        Arc::new(decoded)
-    }).clone()
-}
-
-#[macro_export]
-macro_rules! tryz {
-    ($oof:expr) => {
-        match $oof {
-            Ok(f) => {
-                f
-            },
-            Err(e) => {
-                eprintln!("Error: {}",e);
-                return;
-            },
-        }
-    };
-}
-
-fn defhys() -> Option<u64> {
-    Some(0)
+    Ok(
+        interner.get_or_insert_with(&decoded, |v| {
+            debug_assert_eq!(v, &decoded);
+            Arc::new(decoded)
+        })
+        .clone()
+    )
 }
