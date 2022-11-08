@@ -4,6 +4,7 @@ use vfs::is_absolute;
 
 pub struct Opts {
     pub paths: Vec<PathBuf>,
+    pub cache_path: PathBuf,
     pub verbose: bool,
     pub shadow_rule: u8,
     pub force_absolute_paths: bool,

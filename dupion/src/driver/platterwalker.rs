@@ -303,7 +303,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                             pool.spawn(move |_| {
                                 let (size,path) = {
                                     let s = s.read();
-                                    s.eventually_store_vfs(false);
+                                    s.eventually_store_vfs(&opts.cache_path, false);
                                     let e = &s.tree[id];
                                     ( e.file_size.unwrap(), e.path.clone() )
                                 };
@@ -356,7 +356,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                     //state.disp_pass_2_processed_bytes_capped += size.max(1024*1024);
                     DISP_PROCESSED_FILES.fetch_add(1,Ordering::Relaxed);
 
-                    s.eventually_store_vfs(false);
+                    s.eventually_store_vfs(&opts.cache_path, false);
 
                     drop(s);
 

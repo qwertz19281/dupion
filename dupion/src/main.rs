@@ -13,6 +13,7 @@ fn main() {
 
     let opts = Box::leak(Box::new(Opts{
         paths: o.dirs.clone(),
+        cache_path: o.cache_path.clone(),
         verbose: o.verbose,
         shadow_rule: o.shadow_rule,
         force_absolute_paths: o.absolute,
@@ -43,7 +44,7 @@ fn main() {
     let state = Box::leak(Box::new(RwLock::new(State::new(!o.no_cache))));
 
     if !o.bench_pass_1 {
-        state.write().eventually_load_vfs();
+        state.write().eventually_load_vfs(&opts.cache_path);
     }
 
     if !o.no_scan {
@@ -117,7 +118,7 @@ pub fn scan(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
 
     let mut state = state.write();
 
-    state.eventually_store_vfs(true);
+    state.eventually_store_vfs(&opts.cache_path, true);
 }
 
 pub fn dirty_load(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
@@ -200,6 +201,10 @@ pub struct OptInput {
     /// File upper size limit for scanning in bytes  
     #[clap(long, default_value_t = u64::MAX)]
     pub max_size: u64, //TODO parse K/M/G prefixes
+
+    /// Path of dupion cache
+    #[clap(long, default_value = "./dupion_cache")]
+    pub cache_path: PathBuf,
 
     /// Verbose
     #[clap(short, long)]

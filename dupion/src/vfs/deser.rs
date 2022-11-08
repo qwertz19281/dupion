@@ -1,3 +1,5 @@
+use crate::util::CacheUsable;
+
 use super::*;
 
 use base64::decode_config_slice;
@@ -7,6 +9,7 @@ use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde_derive::*;
 use std::borrow::Cow;
 use std::hash::BuildHasherDefault;
+use std::ops::Range;
 use std::{io::BufReader, sync::atomic::Ordering};
 use state::State;
 use util::{VFS_STORE_NOTIF, Hash, Size};
@@ -128,29 +131,28 @@ impl<'de> Deserialize<'de> for VfsEntries {
 }
 
 impl State {
-    pub fn eventually_store_vfs(&self, force: bool) {
-        self.try_eventually_store_vfs(force).unwrap_or_else(|e| dprintln!("Error writing cache: {e}") )
+    pub fn eventually_store_vfs(&self, path: &Path, force: bool) {
+        self.try_eventually_store_vfs(path, force).unwrap_or_else(|e| dprintln!("Error writing cache: {e}") )
     }
 
-    pub fn try_eventually_store_vfs(&self, force: bool) -> anyhow::Result<()> {
+    pub fn try_eventually_store_vfs(&self, path: &Path, force: bool) -> anyhow::Result<()> {
         if self.cache_allowed && (force || VFS_STORE_NOTIF.swap(false,Ordering::Relaxed)) {
             let mut stor = Vec::with_capacity(1024*1024);
             serde_json::to_writer(&mut stor, &self.tree.entries)?;
-            std::fs::write("./dupion_cache",&stor)?;
+            std::fs::write(path,&stor)?;
             //dprintln!("Wrote cache");
         }
         Ok(())
     }
 
-    pub fn eventually_load_vfs(&mut self) {
-        self.try_eventually_load_vfs().unwrap_or_else(|e| dprintln!("Error reading cache: {e}") );
+    pub fn eventually_load_vfs(&mut self, path: &Path) {
+        self.try_eventually_load_vfs(path).unwrap_or_else(|e| dprintln!("Error reading cache: {e}") );
     }
 
-    pub fn try_eventually_load_vfs(&mut self) -> anyhow::Result<()> {
+    pub fn try_eventually_load_vfs(&mut self, path: &Path) -> anyhow::Result<()> {
         const BUF_THRES_RANGE: Range<u64> = 1024*1024*64 .. 1024*1024*1024;
 
         if self.cache_allowed {
-            let path = PathBuf::from("./dupion_cache");
             let path_meta = path.metadata()?;
             if path_meta.is_file() {
                 if path_meta.len() > CacheUsable::new(BUF_THRES_RANGE).get() {
