@@ -1,6 +1,5 @@
 use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{export, calculate_dir_hash, find_shadowed}, util::*, vfs::VfsId, zip::setlocale_hack, output::{tree::print_tree, groups::print_groups, treediff::print_treediff}, dedup::{Deduper, btrfs::BtrfsDedup}, print_stat};
-use std::{time::Duration, sync::{atomic::Ordering}, path::PathBuf, io::Write};
-use size_format::SizeFormatterBinary;
+use std::{time::Duration, sync::{atomic::Ordering}, path::PathBuf};
 use parking_lot::RwLock;
 use clap::Parser;
 
@@ -174,67 +173,67 @@ pub fn get_threads() -> usize {
 #[clap(version, about)]
 pub struct OptInput {
     /// EXPERIMENTAL Read buffer in MiB
-    #[clap(long, default_value_t = 1.0)]
-    /// EXPERIMENTAL Prefetch budget in MiB
+    #[arg(long, default_value_t = 1.0)]
     pub read_buffer: f64,
-    #[clap(long, default_value_t = 32.0)]
+    /// EXPERIMENTAL Prefetch budget in MiB
+    #[arg(long, default_value_t = 32.0)]
     pub prefetch_budget: f64,
     /// EXPERIMENTAL Dedup budget in MiB
-    #[clap(long, default_value_t = 256.0)]
+    #[arg(long, default_value_t = 256.0)]
     pub dedup_budget: f64,
     /// Threaded archive read cache limit in MiB
-    #[clap(long, default_value_t = 1024.0)]
+    #[arg(long, default_value_t = 1024.0)]
     pub archive_cache_mem: f64,
     /// Number of threads for zip decoding, 0 = RAYON_NUM_THREADS or num_cpu logical count
-    #[structopt(short, long, default_value_t = 0)]
+    #[arg(short, long, default_value_t = 0)]
     pub threads: usize,
     /// Show shadowed files/directory (shadowed are e.g. childs of duplicate dirs) (0-3)
     /// 0: show ALL, including pure shadowed groups
     /// 1: show all except pure shadowed groups
     /// 2: show shadowed only if there is also one non-shadowed in the group
     /// 3: never show shadowed
-    #[structopt(short, long, default_value_t = 2, verbatim_doc_comment)]
+    #[arg(short, long, default_value_t = 2, verbatim_doc_comment)]
     pub shadow_rule: u8,
     /// File lower size limit for scanning in bytes  
-    #[clap(long, default_value_t = 0)]
+    #[arg(long, default_value_t = 0)]
     pub min_size: u64,
     /// File upper size limit for scanning in bytes  
-    #[clap(long, default_value_t = u64::MAX)]
+    #[arg(long, default_value_t = u64::MAX)]
     pub max_size: u64, //TODO parse K/M/G prefixes
 
     /// Path of dupion cache
-    #[clap(long, default_value = "./dupion_cache")]
+    #[arg(long, default_value = "./dupion_cache")]
     pub cache_path: PathBuf,
 
     /// Verbose
-    #[clap(short, long)]
+    #[arg(short, long)]
     pub verbose: bool,
     /// Force to display absolute paths
-    #[clap(long)]
+    #[arg(long)]
     pub absolute: bool,
     /// Enable cache dropbehind to reduce cache pressure in hash scan. Can affect performance positively or negatively
-    #[clap(long)]
+    #[arg(long)]
     pub cache_dropbehind: bool,
     /// EXPERIMENTAL Enable hashing in 1st pass. Can affect performance positively or negatively
-    #[clap(long)]
+    #[arg(long)]
     pub pass_1_hash: bool,
     /// Don't read or write cache file
-    #[clap(long)]
+    #[arg(long)]
     pub no_cache: bool,
     /// Abort after pass 1
-    #[clap(long)]
+    #[arg(long)]
     pub bench_pass_1: bool,
     /// EXPERIMENTAL Prefetch directory metadata, eventually fails on non-root
-    #[clap(long)]
+    #[arg(long)]
     pub dir_prefetch: bool,
     /// Also search inside archives. requires to scan and hash every archive
-    #[clap(short='a', long)]
+    #[arg(short='a', long)]
     pub read_archives: bool, //TODO: build mode w/o archive support
     /// EXPERIMENTAL Don't scan for files, use found files from cache instead
-    #[clap(long)]
+    #[arg(long)]
     pub no_scan: bool,
     /// EXPERIMENTAL Dedup even if first extent match. Currently this would dedup everything, even if already deduped
-    #[clap(long)]
+    #[arg(long)]
     pub aggressive_dedup: bool,
 
     /// Results output mode (g/t/d/-)
@@ -242,17 +241,18 @@ pub struct OptInput {
     /// tree: json as tree
     /// diff: like tree, but exact dir comparision, reveals diffs and supersets
     /// -: disabled
-    #[structopt(short, long, parse(from_str), default_value = "g", verbatim_doc_comment)]
+    #[arg(short, long, default_value = "g", verbatim_doc_comment)]
     pub output: OutputMode,
     /// EXPERIMENTAL Deduplication mode (-/btrfs). Disabled by default
-    #[clap(long, default_value = "")]
+    #[arg(long, default_value = "")]
     pub dedup: String,
 
     /// Directories to scan. cwd if none defined
-    #[clap(parse(from_os_str))]
+    #[arg()]
     pub dirs: Vec<PathBuf>,
 }
 
+#[derive(Clone)]
 pub enum OutputMode {
     Groups,
     Tree,
