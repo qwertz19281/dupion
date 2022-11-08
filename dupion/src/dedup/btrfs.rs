@@ -1,6 +1,6 @@
 use super::*;
 use std::{sync::atomic::Ordering, fs::{Metadata, File}};
-use util::{disp_processed_bytes, disp_processed_files};
+use util::{DISP_PROCESSED_BYTES, DISP_PROCESSED_FILES};
 use ::btrfs::{DedupeRange, DedupeRangeDestInfo, DedupeRangeStatus, deduplicate_range};
 use std::os::unix::io::FromRawFd;
 use size_format::SizeFormatterBinary;
@@ -31,7 +31,7 @@ impl Deduper for BtrfsDedup {
             let open_max = 512;
             let mut open_take = 0;
 
-            //eprintln!("Acq OSC {} {}B",current.len(),SizeFormatterBinary::new(cache_max));
+            //dprintln!("Acq OSC {} {}B",current.len(),SizeFormatterBinary::new(cache_max));
 
             if groups[go].file_size*groups[go].sum < cache_max {
                 groups[go].range.start = 0;
@@ -79,7 +79,7 @@ impl Deduper for BtrfsDedup {
                 }
             }
 
-            eprintln!("Batch {} files, {}B",current.len(),SizeFormatterBinary::new(cache_take));
+            dprintln!("Batch {} files, {}B",current.len(),SizeFormatterBinary::new(cache_take));
             
             let mut opened: Vec<(DedupGroup,FileDescriptor,Vec<FileDescriptor>,bool)> = Vec::with_capacity(current.len());
 
@@ -93,7 +93,7 @@ impl Deduper for BtrfsDedup {
                 ) {
                     Ok(v) => v,
                     Err(e) => {
-                        eprintln!("\tError opening for dedup: {} ({})",e,opts.path_disp(path));
+                        dprintln!("\tError opening for dedup: {} ({})",e,opts.path_disp(path));
                         return Err(());
                     }
                 };
@@ -101,7 +101,7 @@ impl Deduper for BtrfsDedup {
                 let meta = match fd_metadata(fd.get_value()) {
                     Ok(m) => m,
                     Err(e) => {
-                        eprintln!("\tError reading metadata for dedup: {} ({})",e,opts.path_disp(path));
+                        dprintln!("\tError reading metadata for dedup: {} ({})",e,opts.path_disp(path));
                         return Err(());
                     }
                 };
@@ -109,14 +109,14 @@ impl Deduper for BtrfsDedup {
                 if meta.len() == group.file_size {
                     Ok(fd)
                 }else{
-                    eprintln!("\tComodified file, skip group: {}",opts.path_disp(path));
+                    dprintln!("\tComodified file, skip group: {}",opts.path_disp(path));
                     Err(())
                 }
             };
 
             // open all the relevant files
             'g: for (group,last_part) in current.drain(..) {
-                eprintln!(
+                dprintln!(
                     "\tGroup {}B..{}B -> {} ({})",
                     SizeFormatterBinary::new(group.range.start),
                     SizeFormatterBinary::new(group.range.end),
@@ -163,7 +163,7 @@ impl Deduper for BtrfsDedup {
                 }
             }
 
-            readahead.sort_by_key(|&(pos,..)| pos );
+            readahead.sort_by_key(|&(phys,..)| phys );
 
             if real {
                 for (_,fd,range) in &readahead {
@@ -192,7 +192,7 @@ impl Deduper for BtrfsDedup {
             for (group,senpai_fd,dups_fd,last_part) in opened {
                 assert_eq!(dups_fd.len(),group.dups.len());
                 let senpai_path = &s.tree[group.senpai].path;
-                eprintln!(
+                dprintln!(
                     "\tDedup {}B..{}B -> {} ({})",
                     SizeFormatterBinary::new(group.range.start),
                     SizeFormatterBinary::new(group.range.end),
@@ -220,13 +220,13 @@ impl Deduper for BtrfsDedup {
                         senpai_fd.get_value(),
                         &mut dedup_range,
                     ) {
-                        eprintln!("\tError deduplicating: {}",e);
+                        dprintln!("\tError deduplicating: {}",e);
                     }
                 }
 
-                disp_processed_bytes.fetch_add(group.dups.len() as u64 * (group.range.end - group.range.start),Ordering::Relaxed);
+                DISP_PROCESSED_BYTES.fetch_add(group.dups.len() as u64 * (group.range.end - group.range.start),Ordering::Relaxed);
                 if last_part {
-                    disp_processed_files.fetch_add(group.dups.len() as u64,Ordering::Relaxed);
+                    DISP_PROCESSED_FILES.fetch_add(group.dups.len() as u64,Ordering::Relaxed);
                 }
 
                 let mut deduped = 0;
@@ -235,13 +235,13 @@ impl Deduper for BtrfsDedup {
                     deduped += i.bytes_deduped;
                     let path = &s.tree[id].path;
                     if i.status == DedupeRangeStatus::Differs {
-                        eprintln!("\t\tNot deduped {}",opts.path_disp(path));
+                        dprintln!("\t\tNot deduped {}",opts.path_disp(path));
                     } else {
                         s.tree[id].dedup_state = Some(true);
                     }
                 }
 
-                disp_deduped_bytes.fetch_add(deduped,Ordering::Relaxed);
+                DISP_DEDUPED_BYTES.fetch_add(deduped,Ordering::Relaxed);
             }
 
         }

@@ -11,12 +11,12 @@ pub mod fd;
 
 pub trait Deduper {
     fn dedup(&mut self, state: &'static RwLock<State>, opts: &'static Opts) -> AnyhowResult<()> {
-        disp_processed_files.store(0,Ordering::Relaxed);
-        disp_prev.store(0,Ordering::Relaxed);
-        disp_processed_bytes.store(0,Ordering::Relaxed);
-        disp_relevant_files.store(0,Ordering::Relaxed);
-        disp_relevant_bytes.store(0,Ordering::Relaxed);
-        disp_deduped_bytes.store(0, Ordering::Relaxed);
+        DISP_PROCESSED_FILES.store(0,Ordering::Relaxed);
+        DISP_PREV.store(0,Ordering::Relaxed);
+        DISP_PROCESSED_BYTES.store(0,Ordering::Relaxed);
+        DISP_RELEVANT_FILES.store(0,Ordering::Relaxed);
+        DISP_RELEVANT_BYTES.store(0,Ordering::Relaxed);
+        DISP_DEDUPED_BYTES.store(0, Ordering::Relaxed);
         
         let s = state.write();
         let mut dest: Vec<DedupGroup> = Vec::with_capacity(s.hashes.len());
@@ -52,8 +52,8 @@ pub trait Deduper {
 
             let size = s.tree[senpai].file_size.unwrap();
 
-            disp_relevant_bytes.fetch_add(candidates.len() as u64*size,Ordering::Relaxed);
-            disp_relevant_files.fetch_add(candidates.len() as u64,Ordering::Relaxed);
+            DISP_RELEVANT_BYTES.fetch_add(candidates.len() as u64*size,Ordering::Relaxed);
+            DISP_RELEVANT_FILES.fetch_add(candidates.len() as u64,Ordering::Relaxed);
 
             while candidates.len() > 127 { //TODO move to specific dedup handler
                 let remainder = candidates.split_off(127);

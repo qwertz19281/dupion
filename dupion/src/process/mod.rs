@@ -37,7 +37,7 @@ pub fn calculate_dir_hash(state: &mut State, id: VfsId) -> Result<(Size,Hash),()
     assert!(state.tree[id].dir_size.is_none());
     if state.tree[id].is_file && !state.tree[id].is_dir {
         let (size,hash) = state.tree[id].file_props();
-        //eprintln!("{},{:?},{}",state.tree[id].path.to_string_lossy(),state.tree[id].size,state.tree[id].hash.is_some());
+        //dprintln!("{},{:?},{}",state.tree[id].path.to_string_lossy(),state.tree[id].size,state.tree[id].hash.is_some());
         assert!(size.is_some());
         return Ok((
             size.ok_or(())?,
@@ -47,7 +47,7 @@ pub fn calculate_dir_hash(state: &mut State, id: VfsId) -> Result<(Size,Hash),()
     if !state.tree[id].is_dir {
         return Err(());
     }
-    //eprintln!("Hash Dir {}",state.tree[id].path.to_string_lossy());
+    //dprintln!("Hash Dir {}",state.tree[id].path.to_string_lossy());
     assert!(state.tree[id].is_dir);
     //assert!(sf_size.is_none()); //TODO invalid if archive support
 
@@ -85,8 +85,8 @@ pub fn calculate_dir_hash(state: &mut State, id: VfsId) -> Result<(Size,Hash),()
 
     let hash = Arc::new(hasher.finalize().into());
 
-    //eprintln!("Hashed Dir {}",state.tree[id].path.to_string_lossy());
-    //eprintln!("{} {}",size,encode_hash(&hash));
+    //dprintln!("Hashed Dir {}",state.tree[id].path.to_string_lossy());
+    //dprintln!("{} {}",size,encode_hash(&hash));
 
     state.tree[id].dir_size = Some(size);
     state.tree[id].dir_hash = Some(Arc::clone(&hash));

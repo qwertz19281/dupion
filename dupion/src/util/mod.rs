@@ -14,17 +14,17 @@ pub type Hash = Arc<[u8;32]>;
 pub type Sizes = rustc_hash::FxHashMap<Size,SizeGroup>;
 pub type Hashes = rustc_hash::FxHashMap<Hash,HashGroup>;
 
-pub static disp_found_bytes: AtomicU64 = AtomicU64::new(0);
-pub static disp_found_files: AtomicU64 = AtomicU64::new(0);
-pub static disp_relevant_bytes: AtomicU64 = AtomicU64::new(0);
-pub static disp_relevant_files: AtomicU64 = AtomicU64::new(0);
-pub static disp_processed_bytes: AtomicU64 = AtomicU64::new(0);
-pub static disp_processed_files: AtomicU64 = AtomicU64::new(0);
-pub static disp_deduped_bytes: AtomicU64 = AtomicU64::new(u64::MAX);
-pub static disp_prev: AtomicU64 = AtomicU64::new(0);
-pub static disp_enabled: AtomicBool = AtomicBool::new(false);
-pub static vfs_store_notif: AtomicBool = AtomicBool::new(false);
-pub static alloc_mon: AtomicUsize = AtomicUsize::new(0);
+pub static DISP_FOUND_BYTES: AtomicU64 = AtomicU64::new(0);
+pub static DISP_FOUND_FILES: AtomicU64 = AtomicU64::new(0);
+pub static DISP_RELEVANT_BYTES: AtomicU64 = AtomicU64::new(0);
+pub static DISP_RELEVANT_FILES: AtomicU64 = AtomicU64::new(0);
+pub static DISP_PROCESSED_BYTES: AtomicU64 = AtomicU64::new(0);
+pub static DISP_PROCESSED_FILES: AtomicU64 = AtomicU64::new(0);
+pub static DISP_DEDUPED_BYTES: AtomicU64 = AtomicU64::new(u64::MAX);
+pub static DISP_PREV: AtomicU64 = AtomicU64::new(0);
+pub static DISP_ENABLED: AtomicBool = AtomicBool::new(false);
+pub static VFS_STORE_NOTIF: AtomicBool = AtomicBool::new(false);
+pub static ALLOC_MON: AtomicUsize = AtomicUsize::new(0);
 
 pub struct MutexedReader<R> {
     pub inner: R,
@@ -92,13 +92,13 @@ pub struct AllocMonBuf(Vec<u8>);
 
 impl AllocMonBuf {
     pub fn new(size: usize, alloc_thresh: usize) -> Self {
-        while alloc_mon.load(Ordering::Relaxed)+size > alloc_thresh {
+        while ALLOC_MON.load(Ordering::Relaxed)+size > alloc_thresh {
             std::thread::sleep(Duration::from_millis(50));
         }
         let buf = align_first::<_,A4096>(size);
         assert_eq!(buf.len(),size);
         assert_eq!(buf.capacity(),size);
-        alloc_mon.fetch_add(size, Ordering::Relaxed);
+        ALLOC_MON.fetch_add(size, Ordering::Relaxed);
         Self(buf)
     }
 }
@@ -116,7 +116,7 @@ impl DerefMut for AllocMonBuf {
 }
 impl Drop for AllocMonBuf {
     fn drop(&mut self) {
-        alloc_mon.fetch_sub(self.capacity(), Ordering::Relaxed);
+        ALLOC_MON.fetch_sub(self.capacity(), Ordering::Relaxed);
     }
 }
 

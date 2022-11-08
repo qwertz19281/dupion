@@ -9,7 +9,7 @@ use std::borrow::Cow;
 use std::hash::BuildHasherDefault;
 use std::{io::BufReader, sync::atomic::Ordering};
 use state::State;
-use util::{vfs_store_notif, Hash, Size};
+use util::{VFS_STORE_NOTIF, Hash, Size};
 use std::fs::File;
 
 #[derive(Serialize,Deserialize)]
@@ -129,21 +129,21 @@ impl<'de> Deserialize<'de> for VfsEntries {
 
 impl State {
     pub fn eventually_store_vfs(&self, force: bool) {
-        self.try_eventually_store_vfs(force).unwrap_or_else(|e| eprintln!("Error writing cache: {e}") )
+        self.try_eventually_store_vfs(force).unwrap_or_else(|e| dprintln!("Error writing cache: {e}") )
     }
 
     pub fn try_eventually_store_vfs(&self, force: bool) -> anyhow::Result<()> {
-        if self.cache_allowed && (force || vfs_store_notif.swap(false,Ordering::Relaxed)) {
+        if self.cache_allowed && (force || VFS_STORE_NOTIF.swap(false,Ordering::Relaxed)) {
             let mut stor = Vec::with_capacity(1024*1024);
             serde_json::to_writer(&mut stor, &self.tree.entries)?;
             std::fs::write("./dupion_cache",&stor)?;
-            //eprintln!("Wrote cache");
+            //dprintln!("Wrote cache");
         }
         Ok(())
     }
 
     pub fn eventually_load_vfs(&mut self) {
-        self.try_eventually_load_vfs().unwrap_or_else(|e| eprintln!("Error reading cache: {e}") )
+        self.try_eventually_load_vfs().unwrap_or_else(|e| dprintln!("Error reading cache: {e}") );
     }
 
     pub fn try_eventually_load_vfs(&mut self) -> anyhow::Result<()> {

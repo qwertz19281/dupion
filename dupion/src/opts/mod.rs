@@ -34,7 +34,7 @@ impl Opts {
     pub fn log_verbosed(&self, prefix: &str, path: &Path) {
         if self.verbose {
             let s = self.path_disp(path);
-            eprintln!("\t{} {}",prefix,s);
+            dprintln!("\t{} {}",prefix,s);
         }
     }
     pub fn path_disp<'a>(&self, path: &'a Path) -> &'a str {

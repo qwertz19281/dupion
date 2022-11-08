@@ -1,6 +1,6 @@
 use super::*;
 use std::{sync::{atomic::Ordering, Arc}, ffi::OsString};
-use util::{disp_relevant_files, Hash, disp_relevant_bytes, Size};
+use util::{DISP_RELEVANT_FILES, Hash, DISP_RELEVANT_BYTES, Size};
 
 use state::State;
 
@@ -62,8 +62,8 @@ impl VfsEntry {
     pub fn disp_add_relevant(&mut self) {
         if !self.disp_relevated && self.file_hash.is_none() {
             let size = self.file_size.unwrap();
-            disp_relevant_bytes.fetch_add(size,Ordering::Relaxed);
-            disp_relevant_files.fetch_add(1,Ordering::Relaxed);
+            DISP_RELEVANT_BYTES.fetch_add(size,Ordering::Relaxed);
+            DISP_RELEVANT_FILES.fetch_add(1,Ordering::Relaxed);
             self.disp_relevated = true;
         }
     }
@@ -181,7 +181,7 @@ impl State {
             self.set_valid(id)
         }else{
             let s = &mut self.tree[id];
-            //eprintln!("MISS {}",s.path.to_string_lossy());
+            //dprintln!("MISS {}",s.path.to_string_lossy());
             s.file_size = None;
             s.file_hash = None;
             s.dir_size = None;

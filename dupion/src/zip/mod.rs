@@ -41,7 +41,7 @@ pub fn decode_zip<'r,R>(mut ar: R, zip_path: &Path, state: &RwLock<State>, opts:
                     }
 
                     if (r2 as i64) < size {
-                        eprintln!("\tWARN: assertion failed: r2 as i64 >= size ({})",opts.path_disp(&zip_path.join(name)));
+                        dprintln!("\tWARN: assertion failed: r2 as i64 >= size ({})",opts.path_disp(&zip_path.join(name)));
                         //continue;
                     }
 
@@ -81,7 +81,7 @@ pub fn decode_zip<'r,R>(mut ar: R, zip_path: &Path, state: &RwLock<State>, opts:
         Ok(())
     })();
     if result.is_err() {
-        eprintln!("\tUpgrade(1) {}",opts.path_disp(zip_path));
+        dprintln!("\tUpgrade(1) {}",opts.path_disp(zip_path));
         if let Some(e) = state.write().tree.resolve_mut(zip_path) {
             e.failure = Some(1);
         }
@@ -100,7 +100,7 @@ pub fn open_zip<'r,R>(r: R,path: &Path,state: &RwLock<State>, opts: &Opts) -> An
         Ok(b.open_seekable_stream(r)?)
     })();
     if result.is_err() {
-        eprintln!("\tUpgrade(1) {}",opts.path_disp(path));
+        dprintln!("\tUpgrade(1) {}",opts.path_disp(path));
         if let Some(e) = state.write().tree.resolve_mut(path) {
             e.failure = Some(1);
         }
@@ -125,7 +125,7 @@ macro_rules! try_counted {
             },
             Err(e) => {
                 $ec += 1;
-                eprintln!($fmt,e,$($args)*);
+                dprintln!($fmt,e,$($args)*);
                 if $ec >= 16 {
                     return Err(e.into());
                 }

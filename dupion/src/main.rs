@@ -1,8 +1,10 @@
-use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{export, calculate_dir_hash, find_shadowed}, util::*, vfs::VfsId, zip::setlocale_hack, output::{tree::print_tree, groups::print_groups, treediff::print_treediff}, dedup::{Deduper, btrfs::BtrfsDedup}};
+use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{export, calculate_dir_hash, find_shadowed}, util::*, vfs::VfsId, zip::setlocale_hack, output::{tree::print_tree, groups::print_groups, treediff::print_treediff}, dedup::{Deduper, btrfs::BtrfsDedup}, print_stat};
 use std::{time::Duration, sync::{atomic::Ordering}, path::PathBuf, io::Write};
 use size_format::SizeFormatterBinary;
 use parking_lot::RwLock;
 use clap::Parser;
+
+use dupion::dprintln;
 
 fn main() {
     setlocale_hack();
@@ -51,10 +53,10 @@ fn main() {
     if o.bench_pass_1 {return;}
 
     if o.dedup == "btrfs" {
-        eprintln!("\n\n#### Dedup");
-        disp_enabled.store(true, Ordering::Relaxed);
+        dprintln!("\n\n#### Dedup");
+        DISP_ENABLED.store(true, Ordering::Relaxed);
         BtrfsDedup{}.dedup(state,opts).unwrap();
-        disp_enabled.store(false, Ordering::Relaxed);
+        DISP_ENABLED.store(false, Ordering::Relaxed);
         print_stat();
     }
 
@@ -62,18 +64,18 @@ fn main() {
 
     if matches!(o.output, OutputMode::Disabled) {return;}
 
-    eprintln!("\n\n#### Calculate");
+    dprintln!("\n\n#### Calculate");
     
     assert!(!state.tree.entries.is_empty(),"No Duplicates found");
 
     let _ = calculate_dir_hash(&mut state,VfsId::ROOT);
     find_shadowed(&mut state,VfsId::ROOT);
 
-    eprintln!("#### Sort");
+    dprintln!("#### Sort");
 
     let sorted = export(&mut state);
 
-    eprintln!("#### Result");
+    dprintln!("#### Result");
 
     match o.output {
         OutputMode::Groups => print_groups(&sorted, &state, opts),
@@ -86,29 +88,29 @@ fn main() {
 pub fn scan(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
     let mut d = PlatterWalker::new();
 
-    eprintln!("\n#### Pass 1\n");
+    dprintln!("\n#### Pass 1\n");
 
-    disp_enabled.store(true, Ordering::Relaxed);
+    DISP_ENABLED.store(true, Ordering::Relaxed);
     spawn_info_thread(opts);
     d.run(state,opts,Phase::Size).unwrap();
-    disp_enabled.store(false, Ordering::Relaxed);
+    DISP_ENABLED.store(false, Ordering::Relaxed);
 
     print_stat();
 
     if o.bench_pass_1 {return;}
 
-    eprintln!("\n\n#### Pass 2\n");
+    dprintln!("\n\n#### Pass 2\n");
 
-    disp_enabled.store(true, Ordering::Relaxed);
+    DISP_ENABLED.store(true, Ordering::Relaxed);
     d.run(state,opts,Phase::Hash).unwrap();
-    disp_enabled.store(false, Ordering::Relaxed);
+    DISP_ENABLED.store(false, Ordering::Relaxed);
     print_stat();
 
-    eprintln!("\n\n#### Pass 3\n");
+    dprintln!("\n\n#### Pass 3\n");
 
-    disp_enabled.store(true, Ordering::Relaxed);
+    DISP_ENABLED.store(true, Ordering::Relaxed);
     d.run(state,opts,Phase::PostHash).unwrap();
-    disp_enabled.store(false, Ordering::Relaxed);
+    DISP_ENABLED.store(false, Ordering::Relaxed);
     print_stat();
 
     let mut state = state.write();
@@ -134,9 +136,9 @@ pub fn spawn_info_thread(o: &Opts) {
                 note+=1;
                 if note >= 1200 {
                     note = 0;
-                    vfs_store_notif.store(true, Ordering::Relaxed);
+                    VFS_STORE_NOTIF.store(true, Ordering::Relaxed);
                 }
-                if disp_enabled.load(Ordering::Relaxed) {
+                if DISP_ENABLED.load(Ordering::Relaxed) {
                     print_stat();
                 }
             }
@@ -144,48 +146,6 @@ pub fn spawn_info_thread(o: &Opts) {
     }
 }
 
-pub fn print_stat() {
-    let processed_files = disp_processed_files.load(Ordering::Relaxed);
-    let relevant_files = disp_relevant_files.load(Ordering::Relaxed);
-    let found_files = disp_found_files.load(Ordering::Relaxed);
-    let processed_bytes = disp_processed_bytes.load(Ordering::Relaxed);
-    let relevant_bytes = disp_relevant_bytes.load(Ordering::Relaxed);
-    let found_bytes = disp_found_bytes.load(Ordering::Relaxed);
-    let prev_bytes = disp_prev.swap(processed_bytes, Ordering::Relaxed).min(processed_bytes);
-    let deduped_bytes = disp_deduped_bytes.load(Ordering::Relaxed);
-    let alloced = alloc_mon.load(Ordering::Relaxed) as u64;
-
-    if deduped_bytes == u64::MAX {
-        eprint!(
-            //"\x1B[2K\rAnalyzed files: {:>filefill$}/{} bytes: {:>12}B/{}B ({:>12}B/s) percent: {}%",
-            "\x1B[2K\rFound: {} ({}B)        Hashed: {}/{} {}B/{}B ({}B/s)        alloc={}B",
-            found_files,
-            SizeFormatterBinary::new(found_bytes),
-            processed_files,
-            relevant_files,
-            SizeFormatterBinary::new(processed_bytes),
-            SizeFormatterBinary::new(relevant_bytes),
-            SizeFormatterBinary::new((processed_bytes - prev_bytes)*2),
-            SizeFormatterBinary::new(alloced),
-            //( processed_bytes as f32 / relevant_bytes as f32 )*100.0,
-            //filefill = relevant_files.to_string().len(),
-        );
-    }else{
-        eprint!(
-            //"\x1B[2K\rAnalyzed files: {:>filefill$}/{} bytes: {:>12}B/{}B ({:>12}B/s) percent: {}%",
-            "\x1B[2K\rDeduplication: Processed: {}/{} {}B/{}B ({}B/s)        Deduped: {}B",
-            processed_files,
-            relevant_files,
-            SizeFormatterBinary::new(processed_bytes),
-            SizeFormatterBinary::new(relevant_bytes),
-            SizeFormatterBinary::new((processed_bytes - prev_bytes)*2),
-            SizeFormatterBinary::new(deduped_bytes as u64),
-            //( processed_bytes as f32 / relevant_bytes as f32 )*100.0,
-            //filefill = relevant_files.to_string().len(),
-        );
-    }
-    let _ = std::io::stdout().flush();
-}
 
 pub fn get_threads() -> usize {
     match std::env::var("RAYON_NUM_THREADS")

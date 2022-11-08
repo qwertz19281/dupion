@@ -56,14 +56,14 @@ impl Driver for PlatterWalker {
                             let path = match entry.canon_path.take() {
                                 Some(c) => c,
                                 None => {
-                                    eprintln!("METAMISS");
+                                    dprintln!("METAMISS");
                                     try_continue!(entry.path().canonicalize(),"\tError: {} ({})",opts.path_disp(entry.path()))
                                 },
                             };
                             let meta = match entry.metadata.take() {
                                 Some(c) => c,
                                 None => {
-                                    eprintln!("METAMISS");
+                                    dprintln!("METAMISS");
                                     try_continue!(path.metadata(),"\tError: {} ({})",opts.path_disp(&path))
                                 },
                             };
@@ -73,7 +73,7 @@ impl Driver for PlatterWalker {
 
                         drop(s);
 
-                        //eprintln!("\tPreHash {}",hash_now.len());
+                        //dprintln!("\tPreHash {}",hash_now.len());
 
                         if opts.pass_1_hash {
                             hash_files(
@@ -90,9 +90,9 @@ impl Driver for PlatterWalker {
 
                 let mut s = state.write();
 
-                disp_enabled.store(false, Ordering::Relaxed);
+                DISP_ENABLED.store(false, Ordering::Relaxed);
 
-                eprint!("\nSort...");
+                dprint!("\nSort...");
                 io::stdout().flush().unwrap();
 
                 dest.sort_by_key(|(o,_)| *o );
@@ -105,9 +105,9 @@ impl Driver for PlatterWalker {
 
                 dest.shrink_to_fit();
 
-                eprintln!(" Done");
+                dprintln!("Sort... Done");
 
-                disp_enabled.store(true, Ordering::Relaxed);
+                DISP_ENABLED.store(true, Ordering::Relaxed);
 
                 self.entries = Some(dest);
 
@@ -153,8 +153,8 @@ pub fn size_file(path: &Path, meta: &Metadata, phy_off: u64, dest: &mut Vec<(u64
 
     opts.log_verbosed("SIZE", path);
 
-    disp_found_bytes.fetch_add(size,Ordering::Relaxed);
-    disp_found_files.fetch_add(1,Ordering::Relaxed);
+    DISP_FOUND_BYTES.fetch_add(size,Ordering::Relaxed);
+    DISP_FOUND_FILES.fetch_add(1,Ordering::Relaxed);
 
     let id = s.tree.cid_and_create(path);
     s.validate(id,ctime,Some(size),None);
@@ -238,12 +238,12 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
 
         'big: loop {
             let budget = cache_watcher.get();
-            //eprintln!("Budget: {}",budget);
+            //dprintln!("Budget: {}",budget);
             reaper.budget(budget);
             match reaper.next() {
                 None => break,
                 Some(Err(e)) => {
-                    eprintln!("\tError {}",e);
+                    dprintln!("\tError {}",e);
                 }
                 Some(Ok(mut reader)) => {
                     let Reapion{path: p,id} = reader.data().clone(); 
@@ -254,7 +254,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                     {
                         let s = s.read();
                         if s.tree[id].file_size != Some(size) || s.tree[id].ctime != Some(ctime) {
-                            eprintln!("\tSkip comodified file: {}",opts.path_disp(&p));
+                            dprintln!("\tSkip comodified file: {}",opts.path_disp(&p));
                             continue;
                         }
                     };
@@ -276,12 +276,12 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                                 Ok(n) => {
                                     hasher.update(&buf[off..off+n]);
                                     off+=n;
-                                    disp_processed_bytes.fetch_add(n as u64,Ordering::Relaxed);
+                                    DISP_PROCESSED_BYTES.fetch_add(n as u64,Ordering::Relaxed);
                                 },
                                 Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
                                 Err(e) if e.kind() == ErrorKind::Interrupted => {}
                                 Err(e) => {
-                                    eprintln!("\tFailed to read {}",e);
+                                    dprintln!("\tFailed to read {}",e);
                                     continue 'big;
                                 },
                             }
@@ -297,8 +297,8 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                         });
                     }else{
                         if do_zips && opts.zip_by_extension(&p) {
-                            disp_relevant_bytes.fetch_add(size,Ordering::Relaxed);
-                            disp_relevant_files.fetch_add(1,Ordering::Relaxed);
+                            DISP_RELEVANT_BYTES.fetch_add(size,Ordering::Relaxed);
+                            DISP_RELEVANT_FILES.fetch_add(1,Ordering::Relaxed);
                             let p = p.clone();
                             pool.spawn(move |_| {
                                 let (size,path) = {
@@ -314,8 +314,8 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                                 let r = try_return!(open_zip(reader,&path,s,opts),"\tFailed to open ZIP: {} ({})",opts.path_disp(&p));
                                 try_return!(decode_zip(r,&path,s,opts),"\tFailed to read ZIP: {} ({})",opts.path_disp(&p));
                         
-                                disp_processed_bytes.fetch_add(size,Ordering::Relaxed);
-                                disp_processed_files.fetch_add(1,Ordering::Relaxed);
+                                DISP_PROCESSED_BYTES.fetch_add(size,Ordering::Relaxed);
+                                DISP_PROCESSED_FILES.fetch_add(1,Ordering::Relaxed);
                             });
                         }
                         loop {
@@ -323,12 +323,12 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                                 Ok(0) => break,
                                 Ok(n) => {
                                     hasher.update(&buf[..n]);
-                                    disp_processed_bytes.fetch_add(n as u64,Ordering::Relaxed);
+                                    DISP_PROCESSED_BYTES.fetch_add(n as u64,Ordering::Relaxed);
                                 },
                                 Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
                                 Err(e) if e.kind() == ErrorKind::Interrupted => {}
                                 Err(e) => {
-                                    eprintln!("\tFailed to read {}",e);
+                                    dprintln!("\tFailed to read {}",e);
                                     continue 'big;
                                 },
                             }
@@ -354,7 +354,7 @@ pub fn hash_files(i: impl Iterator<Item=VfsId>+Send, s: &'static RwLock<State>, 
                     s.push_to_hash_group(id,true,false).unwrap();
 
                     //state.disp_pass_2_processed_bytes_capped += size.max(1024*1024);
-                    disp_processed_files.fetch_add(1,Ordering::Relaxed);
+                    DISP_PROCESSED_FILES.fetch_add(1,Ordering::Relaxed);
 
                     s.eventually_store_vfs(false);
 
@@ -377,7 +377,7 @@ macro_rules! try_continue {
                 f
             },
             Err(e) => {
-                eprintln!($fmt,e,$($args)*);
+                dprintln!($fmt,e,$($args)*);
                 continue
             },
         }
@@ -392,7 +392,7 @@ macro_rules! try_return {
                 f
             },
             Err(e) => {
-                eprintln!($fmt,e,$($args)*);
+                dprintln!($fmt,e,$($args)*);
                 return
             },
         }
@@ -407,7 +407,7 @@ macro_rules! soft_error {
                 Some(f)
             },
             Err(e) => {
-                eprintln!($fmt,e,$($args)*);
+                dprintln!($fmt,e,$($args)*);
                 None
             },
         }
@@ -422,7 +422,7 @@ macro_rules! try_returnerr {
                 f
             },
             Err(e) => {
-                eprintln!($fmt,e,$($args)*);
+                dprintln!($fmt,e,$($args)*);
                 return Err(e.into())
             },
         }

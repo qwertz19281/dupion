@@ -46,7 +46,7 @@ impl<'a> Serialize for DirEntry<'a> {
             .filter(|&&cid| self.state.tree[cid].exists() )
             .map(|&cid| {
                 let dup = self.state.tree[cid].treediff_stat;
-                //eprintln!("{}",self.state.tree[cid].path.to_str().unwrap());
+                //dprintln!("{}",self.state.tree[cid].path.to_str().unwrap());
                 let name = self.state.tree[cid].path.file_name().unwrap().to_str().unwrap();
                 let size = self.state.tree[cid].file_or_dir_props().0.unwrap_or(0);
                 let ip = self.state.tree[cid].icon_prio2();

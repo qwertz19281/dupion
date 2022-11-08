@@ -59,7 +59,7 @@ impl<'a> Serialize for DirEntry<'a> {
                     dups = self.state.num_hashes(&h);
                     assert!(dups != 0);
                 }
-                //eprintln!("{}",self.state.tree[cid].path.to_str().unwrap());
+                //dprintln!("{}",self.state.tree[cid].path.to_str().unwrap());
                 let ip = self.state.tree[cid].icon_prio2();
                 (dups,cid,s.unwrap_or(0),ip)
             })
