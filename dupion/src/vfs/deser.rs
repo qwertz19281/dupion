@@ -147,13 +147,22 @@ impl State {
     }
 
     pub fn try_eventually_load_vfs(&mut self) -> anyhow::Result<()> {
+        const BUF_THRES_RANGE: Range<u64> = 1024*1024*64 .. 1024*1024*1024;
+
         if self.cache_allowed {
             let path = PathBuf::from("./dupion_cache");
-            if path.is_file() {
-                let reader = File::open(&path)?;
-                let reader = BufReader::new(reader);
-                let VfsEntries(entries) = serde_json::from_reader(reader)?;
-                self.tree.entries = entries;
+            let path_meta = path.metadata()?;
+            if path_meta.is_file() {
+                if path_meta.len() > CacheUsable::new(BUF_THRES_RANGE).get() {
+                    let reader = File::open(&path)?;
+                    let reader = BufReader::with_capacity(1024*1024,reader);
+                    let VfsEntries(entries) = serde_json::from_reader(reader)?;
+                    self.tree.entries = entries;
+                } else {
+                    let data = std::fs::read(&path)?;
+                    let VfsEntries(entries) = serde_json::from_slice(&data)?;
+                    self.tree.entries = entries;
+                }
             }
         }
         Ok(())
@@ -167,7 +176,7 @@ pub fn encode_hash(h: &Hash) -> String {
 type InternSet = hashbrown::HashSet<Hash,BuildHasherDefault<FxHasher>>;
 
 pub fn decode_and_intern_hash(h: &str, interner: &mut InternSet) -> anyhow::Result<Hash> {
-    if h.len() != 44 {bail!("Invalid hash length");}
+    if h.len() != 44 {bail!("Invalid hash length");} //TODO handle the hash upgrade properly
 
     let mut decoded = [0u8;32];
     assert_eq!(
