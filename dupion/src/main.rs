@@ -27,6 +27,7 @@ fn main() {
         //huge_zip_thres: ((o.huge_zip_thres * 1048576.0) as usize +1024)/4096*4096,
         threads: o.threads,
         scan_size_min: o.min_size,
+        aggressive_dedup: o.aggressive_dedup,
     }));
 
     if opts.paths.is_empty() {
@@ -223,6 +224,9 @@ pub struct OptInput {
     /// EXPERIMENTAL Don't scan for files, use found files from cache instead
     #[clap(long)]
     pub no_scan: bool,
+    /// EXPERIMENTAL Dedup even if first extent match. Currently this would dedup everything, even if already deduped
+    #[clap(long)]
+    pub aggressive_dedup: bool,
 
     /// Results output mode (g/t/d/-)
     /// groups: duplicate entries in sorted size groups

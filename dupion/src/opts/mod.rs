@@ -18,6 +18,7 @@ pub struct Opts {
     pub dir_prefetch: bool,
     pub read_archives: bool,
     pub scan_size_min: u64,
+    pub aggressive_dedup: bool,
 }
 
 impl Opts {
