@@ -27,6 +27,7 @@ fn main() {
         //huge_zip_thres: ((o.huge_zip_thres * 1048576.0) as usize +1024)/4096*4096,
         threads: o.threads,
         scan_size_min: o.min_size,
+        scan_size_max: o.max_size,
         aggressive_dedup: o.aggressive_dedup,
     }));
 
@@ -194,8 +195,11 @@ pub struct OptInput {
     #[structopt(short, long, default_value_t = 2, verbatim_doc_comment)]
     pub shadow_rule: u8,
     /// File lower size limit for scanning in bytes  
-    #[clap(short, long, default_value_t = 0)]
+    #[clap(long, default_value_t = 0)]
     pub min_size: u64,
+    /// File upper size limit for scanning in bytes  
+    #[clap(long, default_value_t = u64::MAX)]
+    pub max_size: u64, //TODO parse K/M/G prefixes
 
     /// Verbose
     #[clap(short, long)]
