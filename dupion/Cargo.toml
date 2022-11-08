@@ -22,7 +22,7 @@ base64 = "0.13"
 libc = ">=0.2.70"
 parking_lot = "0.12"
 num_cpus = "1.13"
-sysinfo = "0.24"
+sysinfo = "0.26"
 btrfs = { path = "../rust-btrfs" }
 rustc-hash = "1.1"
 hashbrown = { version = "0.12", default-features = false, features = ["inline-more"] }
