@@ -172,6 +172,56 @@ pub fn get_threads() -> usize {
 #[derive(Parser)]
 #[clap(version, about)]
 pub struct OptInput {
+    /// Results output mode (g/t/d/-), what type of result should be printed
+    /// groups: duplicate entries in sorted size groups
+    /// tree: json as tree
+    /// diff: like tree, but exact dir comparision, reveals diffs and supersets
+    /// -: disabled
+    #[arg(short, long, default_value = "g", verbatim_doc_comment)]
+    pub output: OutputMode,
+
+    /// Set how files/directory should be hidden/omitted (shadowed are e.g. childs of duplicate dirs) (0-3)
+    /// 0: show ALL, including pure shadowed groups
+    /// 1: show all except pure shadowed groups
+    /// 2: show shadowed only if there is also one non-shadowed in the group
+    /// 3: never show shadowed
+    #[arg(short, long, default_value_t = 2, verbatim_doc_comment)]
+    pub shadow_rule: u8,
+    
+    /// Force to display absolute paths
+    #[arg(long)]
+    pub absolute: bool,
+
+    /// File lower size limit for scanning in bytes  
+    #[arg(long, default_value_t = 0)]
+    pub min_size: u64,
+    /// File upper size limit for scanning in bytes  
+    #[arg(long, default_value_t = u64::MAX)]
+    pub max_size: u64, //TODO parse K/M/G prefixes
+
+    /// Also search inside archives. requires to scan and hash every archive
+    #[arg(short='a', long)]
+    pub read_archives: bool, //TODO: build mode w/o archive support
+
+    /// EXPERIMENTAL Deduplication mode (-/btrfs). Disabled by default
+    #[arg(long, default_value = "")]
+    pub dedup: String,
+
+    /// EXPERIMENTAL Dedup even if first extent match. Currently this would dedup everything, even if already deduped
+    #[arg(long)]
+    pub aggressive_dedup: bool,
+
+    /// Path of dupion cache
+    #[arg(long, default_value = "./dupion_cache")]
+    pub cache_path: PathBuf,
+    /// Don't read or write cache file
+    #[arg(long)]
+    pub no_cache: bool,
+    
+    /// Number of threads for zip decoding, 0 = RAYON_NUM_THREADS or num_cpu logical count
+    #[arg(short, long, default_value_t = 0)]
+    pub threads: usize,
+
     /// EXPERIMENTAL Read buffer in MiB
     #[arg(long, default_value_t = 1.0)]
     pub read_buffer: f64,
@@ -184,68 +234,26 @@ pub struct OptInput {
     /// Threaded archive read cache limit in MiB
     #[arg(long, default_value_t = 1024.0)]
     pub archive_cache_mem: f64,
-    /// Number of threads for zip decoding, 0 = RAYON_NUM_THREADS or num_cpu logical count
-    #[arg(short, long, default_value_t = 0)]
-    pub threads: usize,
-    /// Show shadowed files/directory (shadowed are e.g. childs of duplicate dirs) (0-3)
-    /// 0: show ALL, including pure shadowed groups
-    /// 1: show all except pure shadowed groups
-    /// 2: show shadowed only if there is also one non-shadowed in the group
-    /// 3: never show shadowed
-    #[arg(short, long, default_value_t = 2, verbatim_doc_comment)]
-    pub shadow_rule: u8,
-    /// File lower size limit for scanning in bytes  
-    #[arg(long, default_value_t = 0)]
-    pub min_size: u64,
-    /// File upper size limit for scanning in bytes  
-    #[arg(long, default_value_t = u64::MAX)]
-    pub max_size: u64, //TODO parse K/M/G prefixes
-
-    /// Path of dupion cache
-    #[arg(long, default_value = "./dupion_cache")]
-    pub cache_path: PathBuf,
-
-    /// Verbose
-    #[arg(short, long)]
-    pub verbose: bool,
-    /// Force to display absolute paths
-    #[arg(long)]
-    pub absolute: bool,
     /// Enable cache dropbehind to reduce cache pressure in hash scan. Can affect performance positively or negatively
     #[arg(long)]
     pub cache_dropbehind: bool,
     /// EXPERIMENTAL Enable hashing in 1st pass. Can affect performance positively or negatively
     #[arg(long)]
     pub pass_1_hash: bool,
-    /// Don't read or write cache file
-    #[arg(long)]
-    pub no_cache: bool,
     /// Abort after pass 1
     #[arg(long)]
     pub bench_pass_1: bool,
     /// EXPERIMENTAL Prefetch directory metadata, eventually fails on non-root
     #[arg(long)]
     pub dir_prefetch: bool,
-    /// Also search inside archives. requires to scan and hash every archive
-    #[arg(short='a', long)]
-    pub read_archives: bool, //TODO: build mode w/o archive support
     /// EXPERIMENTAL Don't scan for files, use found files from cache instead
     #[arg(long)]
     pub no_scan: bool,
-    /// EXPERIMENTAL Dedup even if first extent match. Currently this would dedup everything, even if already deduped
-    #[arg(long)]
-    pub aggressive_dedup: bool,
 
-    /// Results output mode (g/t/d/-)
-    /// groups: duplicate entries in sorted size groups
-    /// tree: json as tree
-    /// diff: like tree, but exact dir comparision, reveals diffs and supersets
-    /// -: disabled
-    #[arg(short, long, default_value = "g", verbatim_doc_comment)]
-    pub output: OutputMode,
-    /// EXPERIMENTAL Deduplication mode (-/btrfs). Disabled by default
-    #[arg(long, default_value = "")]
-    pub dedup: String,
+    /// Verbose
+    #[arg(short, long)]
+    pub verbose: bool,
+    
 
     /// Directories to scan. cwd if none defined
     #[arg()]
