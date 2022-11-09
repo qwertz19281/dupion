@@ -31,6 +31,7 @@ fn main() {
         scan_size_min: o.min_size,
         scan_size_max: o.max_size,
         aggressive_dedup: o.aggressive_dedup,
+        dedup_simulate: o.dedup_simulate,
     }));
 
     if opts.paths.is_empty() {
@@ -204,10 +205,12 @@ pub struct OptInput {
     /// EXPERIMENTAL Deduplication mode (-/btrfs). Disabled by default
     #[arg(long, default_value = "")]
     pub dedup: String,
-
     /// EXPERIMENTAL Dedup even if first extent match. Currently this would dedup everything, even if already deduped
     #[arg(long)]
     pub aggressive_dedup: bool,
+    /// Simulate if dedup enabled
+    #[arg(long)]
+    pub dedup_simulate: bool,
 
     /// Path of dupion cache
     #[arg(long, default_value = "./dupion_cache")]

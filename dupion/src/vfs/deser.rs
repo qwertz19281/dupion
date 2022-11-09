@@ -86,6 +86,7 @@ impl<'a> EntryIntermediate<'a> {
             treediff_stat: 0,
             dedup_state: self.dedup_state,
             phys: None,
+            n_extends: None,
         })
     }
 }

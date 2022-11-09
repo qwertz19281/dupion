@@ -55,6 +55,10 @@ impl<D> Entry<D> where D: Default {
     fn extent_sum(&self) -> u64 {
         self.extents.iter().map(|e| e.length).sum()
     }
+
+    pub fn extents(&self) -> impl Iterator<Item=&FileExtent> {
+        self.extents.iter()
+    }
 }
 
 impl<D> PartialEq for Entry<D> where D: Default {
@@ -463,12 +467,6 @@ pub fn file_meta_and_extents(path: impl AsRef<Path>) -> (Result<Metadata,String>
     let file = unsafe{File::from_raw_fd(fd.get_value())};
     let meta = file.metadata().map_err(|e| format!("{}",e) );
     std::mem::forget(file);
-
-    /*if let Ok(mmhhh) = &meta {
-        let mmmhh = std::fs::metadata(&path).unwrap();
-        assert_eq!(mmhhh.ctime(),mmmhh.ctime());
-        assert_eq!(mmhhh.len(),mmmhh.len());
-    }*/
-
+    
     (meta,extents)
 }

@@ -21,6 +21,7 @@ pub struct Opts {
     pub scan_size_min: u64,
     pub scan_size_max: u64,
     pub aggressive_dedup: bool,
+    pub dedup_simulate: bool,
 }
 
 impl Opts {

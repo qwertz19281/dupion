@@ -1,6 +1,7 @@
 use super::*;
 use std::{io::ErrorKind, path::Path};
 use std::os::unix::fs::MetadataExt;
+use btrfs::get_file_extent_map_for_path_noloop;
 use platter_walk::{Order, ToScan};
 use vfs::VfsId;
 use reapfrog::MultiFileReadahead;
@@ -26,16 +27,18 @@ impl Driver for PlatterWalker {
                 //scan.set_batchsize(usize::MAX);
 
                 let mut dest = Vec::with_capacity(65536);
-                let mut hash_now = Vec::new();
+                let mut hash_now: Vec<VfsId> = Vec::new();
 
                 for root in &opts.paths {
                     if root.is_dir() {
                         try_returnerr!(scan.add_root(root.clone()),"\tError adding root: {} ({})",opts.path_disp(root));
                     } else if root.is_file() {
+                        let extends = get_file_extent_map_for_path_noloop(root).unwrap();
                         size_file(
                             root,
                             &root.metadata()?,
-                            0,
+                            extends.get(0).map(|e| e.physical ).unwrap_or(0),
+                            extends.len(),
                             &mut dest,
                             &mut hash_now,
                             &mut state.write(), opts
@@ -68,7 +71,7 @@ impl Driver for PlatterWalker {
                                 },
                             };
 
-                            size_file(&path, &meta, phy_off, &mut dest, &mut hash_now, &mut s, opts)?;
+                            size_file(&path, &meta, phy_off, entry.extents().count(), &mut dest, &mut hash_now, &mut s, opts)?;
                         }
 
                         drop(s);
@@ -147,7 +150,7 @@ impl Driver for PlatterWalker {
     }
 }
 
-pub fn size_file(path: &Path, meta: &Metadata, phy_off: u64, dest: &mut Vec<(u64,VfsId)>, hash_now: &mut Vec<VfsId>, s: &mut State, opts: &Opts) -> AnyhowResult<()> {
+pub fn size_file(path: &Path, meta: &Metadata, phy_off: u64, n_extends: usize, dest: &mut Vec<(u64,VfsId)>, hash_now: &mut Vec<VfsId>, s: &mut State, opts: &Opts) -> AnyhowResult<()> {
     let size = meta.len();
     let ctime = meta.ctime();
 
@@ -164,6 +167,7 @@ pub fn size_file(path: &Path, meta: &Metadata, phy_off: u64, dest: &mut Vec<(u64
     
     e.file_size = Some(size);
     e.phys = Some(phy_off);
+    e.n_extends = Some(n_extends);
     
     s.push_to_size_group(id,true,false).unwrap();
     if s.tree[id].file_hash.is_some() {
