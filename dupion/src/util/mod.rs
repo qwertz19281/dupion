@@ -14,6 +14,8 @@ pub type Hash = Arc<[u8;32]>;
 pub type Sizes = rustc_hash::FxHashMap<Size,SizeGroup>;
 pub type Hashes = rustc_hash::FxHashMap<Hash,HashGroup>;
 
+pub static DISP_ANSI: AtomicBool = AtomicBool::new(false);
+
 pub static DISP_FOUND_BYTES: AtomicU64 = AtomicU64::new(0);
 pub static DISP_FOUND_FILES: AtomicU64 = AtomicU64::new(0);
 pub static DISP_RELEVANT_BYTES: AtomicU64 = AtomicU64::new(0);

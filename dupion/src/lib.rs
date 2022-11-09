@@ -1,4 +1,5 @@
-use anyhow::anyhow;
+use std::io::Write;
+
 use anyhow::bail;
 use anyhow::ensure;
 use anyhow::Result as AnyhowResult;
@@ -6,20 +7,14 @@ use anyhow::Result as AnyhowResult;
 #[macro_export]
 macro_rules! dprint {
     ($($arg:tt)*) => {{
-        let mut err = std::io::stderr().lock();
-        std::io::Write::write_fmt(&mut err, format_args!("\x1B[2K\r")).unwrap();
-        std::io::Write::write_fmt(&mut err, format_args!($($arg)*)).unwrap();
+        $crate::dprint_imp(format_args!($($arg)*));
     }};
 }
 
 #[macro_export]
 macro_rules! dprintln {
     ($($arg:tt)*) => {{
-        let mut err = std::io::stderr().lock();
-        std::io::Write::write_fmt(&mut err, format_args!("\x1B[2K\r")).unwrap();
-        std::io::Write::write_fmt(&mut err, format_args!($($arg)*)).unwrap();
-        std::io::Write::write_all(&mut err, b"\n").unwrap();
-        $crate::print_statw(&mut err, false);
+        $crate::dprintln_imp(format_args!($($arg)*));
     }};
 }
 
@@ -34,6 +29,28 @@ pub mod process;
 pub mod output;
 pub mod zip;
 pub mod dedup;
+
+pub fn dprint_imp(args: std::fmt::Arguments<'_>) {
+    if util::DISP_ANSI.load(std::sync::atomic::Ordering::Relaxed) {
+        let mut err = std::io::stderr().lock();
+        err.write_fmt(format_args!("\x1B[2K\r")).unwrap();
+        err.write_fmt(args).unwrap();
+    } else {
+        eprint!("{}",args);
+    }
+}
+
+pub fn dprintln_imp(args: std::fmt::Arguments<'_>) {
+    if util::DISP_ANSI.load(std::sync::atomic::Ordering::Relaxed) {
+        let mut err = std::io::stderr().lock();
+        err.write_fmt(format_args!("\x1B[2K\r")).unwrap();
+        err.write_fmt(args).unwrap();
+        err.write_all(b"\n").unwrap();
+        print_statw(&mut err, false);
+    } else {
+        eprintln!("{}",args);
+    }
+}
 
 pub fn print_statw(writer: &mut impl std::io::Write, force: bool) {
     use util::*;
@@ -62,7 +79,7 @@ pub fn print_statw(writer: &mut impl std::io::Write, force: bool) {
                 relevant_files,
                 SizeFormatterBinary::new(processed_bytes),
                 SizeFormatterBinary::new(relevant_bytes),
-                SizeFormatterBinary::new((processed_bytes - prev_bytes)*2),
+                SizeFormatterBinary::new((processed_bytes - prev_bytes)*2), //TODO the "speed" needs to account for the actual Duration difference between prev and this call, as they aren't exclusively 500ms anymore
                 SizeFormatterBinary::new(alloced),
                 //( processed_bytes as f32 / relevant_bytes as f32 )*100.0,
                 //filefill = relevant_files.to_string().len(),
@@ -86,7 +103,20 @@ pub fn print_statw(writer: &mut impl std::io::Write, force: bool) {
     let _ = writer.flush();
 }
 
-pub fn print_stat() {
+pub fn print_stat_final() {
     let mut err = std::io::stderr().lock();
-    print_statw(&mut err, true);
+    //if util::DISP_ANSI.load(std::sync::atomic::Ordering::Relaxed) {
+        print_statw(&mut err, true);
+    //}
+    err.write_all(b"\n").unwrap();
+}
+
+pub fn stat_section_start() {
+    util::DISP_ENABLED.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn stat_section_end() {
+    if util::DISP_ENABLED.swap(false, std::sync::atomic::Ordering::Relaxed) {
+        print_stat_final();
+    }
 }

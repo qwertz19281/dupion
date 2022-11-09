@@ -1,4 +1,4 @@
-use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{export, calculate_dir_hash, find_shadowed}, util::*, vfs::VfsId, zip::setlocale_hack, output::{tree::print_tree, groups::print_groups, treediff::print_treediff}, dedup::{Deduper, btrfs::BtrfsDedup}, print_stat};
+use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{export, calculate_dir_hash, find_shadowed}, util::*, vfs::VfsId, zip::setlocale_hack, output::{tree::print_tree, groups::print_groups, treediff::print_treediff}, dedup::{Deduper, btrfs::BtrfsDedup}, print_statw, stat_section_start, stat_section_end};
 use std::{time::Duration, sync::{atomic::Ordering}, path::PathBuf};
 use parking_lot::RwLock;
 use clap::Parser;
@@ -7,6 +7,8 @@ use dupion::dprintln;
 
 fn main() {
     setlocale_hack();
+
+    DISP_ANSI.store(atty::is(atty::Stream::Stderr), Ordering::Relaxed);
 
     let o = OptInput::parse();
 
@@ -55,29 +57,28 @@ fn main() {
     if o.bench_pass_1 {return;}
 
     if o.dedup == "btrfs" {
-        dprintln!("\n\n#### Dedup");
-        DISP_ENABLED.store(true, Ordering::Relaxed);
+        eprintln!("\n#### Dedup\n");
+        stat_section_start();
         BtrfsDedup{}.dedup(state,opts).unwrap();
-        DISP_ENABLED.store(false, Ordering::Relaxed);
-        print_stat();
+        stat_section_end();
     }
 
     let mut state = state.write();
 
     if matches!(o.output, OutputMode::Disabled) {return;}
 
-    dprintln!("\n\n#### Calculate");
+    eprintln!("\n#### Calculate");
     
     assert!(!state.tree.entries.is_empty(),"No Duplicates found");
 
     let _ = calculate_dir_hash(&mut state,VfsId::ROOT);
     find_shadowed(&mut state,VfsId::ROOT);
 
-    dprintln!("#### Sort");
+    eprintln!("#### Sort");
 
     let sorted = export(&mut state);
 
-    dprintln!("#### Result");
+    eprintln!("#### Result");
 
     match o.output {
         OutputMode::Groups => print_groups(&sorted, &state, opts),
@@ -90,30 +91,26 @@ fn main() {
 pub fn scan(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
     let mut d = PlatterWalker::new();
 
-    dprintln!("\n#### Pass 1\n");
+    eprintln!("\n#### Pass 1\n");
 
-    DISP_ENABLED.store(true, Ordering::Relaxed);
+    stat_section_start();
     spawn_info_thread(opts);
     d.run(state,opts,Phase::Size).unwrap();
-    DISP_ENABLED.store(false, Ordering::Relaxed);
-
-    print_stat();
+    stat_section_end();
 
     if o.bench_pass_1 {return;}
 
-    dprintln!("\n\n#### Pass 2\n");
+    eprintln!("\n#### Pass 2\n");
 
-    DISP_ENABLED.store(true, Ordering::Relaxed);
+    stat_section_start();
     d.run(state,opts,Phase::Hash).unwrap();
-    DISP_ENABLED.store(false, Ordering::Relaxed);
-    print_stat();
+    stat_section_end();
 
-    dprintln!("\n\n#### Pass 3\n");
+    eprintln!("\n#### Pass 3\n");
 
-    DISP_ENABLED.store(true, Ordering::Relaxed);
+    stat_section_start();
     d.run(state,opts,Phase::PostHash).unwrap();
-    DISP_ENABLED.store(false, Ordering::Relaxed);
-    print_stat();
+    stat_section_end();
 
     let mut state = state.write();
 
@@ -130,7 +127,7 @@ pub fn dirty_load(o: &OptInput, opts: &'static Opts, state: &'static RwLock<Stat
 }
 
 pub fn spawn_info_thread(o: &Opts) {
-    if !o.verbose {
+    if DISP_ANSI.load(Ordering::Relaxed) && !o.verbose {
         std::thread::spawn(move || {
             let mut note = 0usize;
             loop {
@@ -141,7 +138,8 @@ pub fn spawn_info_thread(o: &Opts) {
                     VFS_STORE_NOTIF.store(true, Ordering::Relaxed);
                 }
                 if DISP_ENABLED.load(Ordering::Relaxed) {
-                    print_stat();
+                    let mut err = std::io::stderr().lock();
+                    print_statw(&mut err, true);
                 }
             }
         });
@@ -254,7 +252,6 @@ pub struct OptInput {
     #[arg(short, long)]
     pub verbose: bool,
     
-
     /// Directories to scan. cwd if none defined
     #[arg()]
     pub dirs: Vec<PathBuf>,

@@ -90,9 +90,9 @@ impl Driver for PlatterWalker {
 
                 let mut s = state.write();
 
-                DISP_ENABLED.store(false, Ordering::Relaxed);
+                stat_section_end();
 
-                dprint!("\nSort...");
+                dprint!("Sort...");
                 io::stdout().flush().unwrap();
 
                 dest.sort_by_key(|(o,_)| *o );
@@ -107,7 +107,7 @@ impl Driver for PlatterWalker {
 
                 dprintln!("Sort... Done");
 
-                DISP_ENABLED.store(true, Ordering::Relaxed);
+                // stat_section_start();
 
                 self.entries = Some(dest);
 

@@ -26,6 +26,7 @@ sysinfo = "0.26"
 btrfs = { path = "../rust-btrfs" }
 rustc-hash = "1.1"
 hashbrown = { version = "0.12", default-features = false, features = ["inline-more"] }
+atty = "0.2"
 
 [dependencies.maligned]
 version = "0.2"
