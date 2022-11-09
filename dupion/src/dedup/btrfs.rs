@@ -16,6 +16,8 @@ impl Deduper for BtrfsDedup {
 
         let file_split_round = 1024*1024*12;
 
+        let max_dups_per_group = 127; // TODO determine amount of files we can open currently
+
         let mut gi = 0;
 
         let mut cache_info = CacheUsable::new(file_split_round*2 .. opts.dedup_budget);
@@ -28,12 +30,6 @@ impl Deduper for BtrfsDedup {
                 continue;
             }
 
-            // Split group if too many files
-            if groups[gi].dups.len() > 127 {
-                let last_half = groups[gi].split_off_end_at_candidate_n(127);
-                groups.insert(gi+1, last_half);
-            }
-
             let cache_max = cache_info.get();
 
             // 1. Try to fit as much of groups as possible into batch, without splitting group files or range
@@ -43,11 +39,14 @@ impl Deduper for BtrfsDedup {
                 let mut used_in_batch = 0;
                 let mut to_open_files = 0;
 
-                while gi < groups.len() && used_in_batch + groups[gi].usage() <= cache_max && groups[gi].sum() + to_open_files <= 128 {
+                while gi < groups.len() && used_in_batch + groups[gi].usage() <= cache_max && groups[gi].sum() + to_open_files <= (max_dups_per_group as u64 + 1) {
                     used_in_batch += groups[gi].usage();
                     to_open_files += groups[gi].sum();
                     current_batch.push((&groups[gi],true));
                     gi += 1;
+                    while gi < groups.len() && groups[gi].dups.is_empty() {
+                        gi += 1;
+                    }
                 }
 
                 // did we do it? submit, else continue
@@ -62,9 +61,15 @@ impl Deduper for BtrfsDedup {
                     break;
                 }
             }
-            // We couldn't fit a single group into batch at this point in the loop
 
-            // 2. Try to split a dedup group by file to fit in
+            // 2. If the group has too many files in it
+            if groups[gi].dups.len() > max_dups_per_group {
+                let first_half = groups[gi].split_off_start_at_candidate_n(max_dups_per_group);
+                dedup_group_batch(&[(&first_half,true)], &mut s, opts, first_half.usage())?;
+                continue;
+            }
+
+            // 3. Try to split a dedup group by file to fit in
             {
                 let group = &mut groups[gi];
                 assert!(group.usage() > cache_max);
@@ -79,7 +84,7 @@ impl Deduper for BtrfsDedup {
                     let first_half = group.split_off_start_at_candidate_n(max_group_files as usize - 1);
                     dedup_group_batch(&[(&first_half,true)], &mut s, opts, first_half.usage())?;
                 } else {
-                    // 3. Try to split in dedup range dimension, currently very aggressively only on one dup
+                    // 4. Try to split in dedup range dimension, currently very aggressively only on one dup
                     assert!(!group.dups.is_empty());
 
                     let mut group = group.split_off_start_at_candidate_n(1);
