@@ -1,7 +1,7 @@
 use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{export, calculate_dir_hash, find_shadowed}, util::*, vfs::VfsId, zip::setlocale_hack, output::{tree::print_tree, groups::print_groups, treediff::print_treediff}, dedup::{Deduper, btrfs::BtrfsDedup}, print_statw, stat_section_start, stat_section_end};
 use std::{time::Duration, sync::{atomic::Ordering}, path::PathBuf};
 use parking_lot::RwLock;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 use dupion::dprintln;
 
@@ -57,7 +57,7 @@ fn main() {
 
     if o.bench_pass_1 {return;}
 
-    if o.dedup == "btrfs" {
+    if let Some(DedupMode::Btrfs) = o.dedup {
         eprintln!("\n#### Dedup\n");
         stat_section_start();
         BtrfsDedup{}.dedup(state,opts).unwrap();
@@ -202,9 +202,11 @@ pub struct OptInput {
     #[arg(short='a', long)]
     pub read_archives: bool, //TODO: build mode w/o archive support
 
-    /// EXPERIMENTAL Deduplication mode (-/btrfs). Disabled by default
-    #[arg(long, default_value = "")]
-    pub dedup: String,
+    /// Deduplication mode (-/btrfs). Disabled by default
+    /// 
+    /// btrfs: Use ioctl_file_dedupe_range on supported filesystems
+    #[arg(long, verbatim_doc_comment)]
+    pub dedup: Option<DedupMode>,
     /// EXPERIMENTAL Dedup even if first extent match. Currently this would dedup everything, even if already deduped
     #[arg(long)]
     pub aggressive_dedup: bool,
@@ -260,22 +262,19 @@ pub struct OptInput {
     pub dirs: Vec<PathBuf>,
 }
 
-#[derive(Clone)]
+#[derive(ValueEnum, Clone)]
 pub enum OutputMode {
+    #[value(alias="g")]
     Groups,
+    #[value(alias="t")]
     Tree,
+    #[value(alias="d")]
     Diff,
+    #[value(alias="-")]
     Disabled,
 }
 
-impl From<&str> for OutputMode {
-    fn from(s: &str) -> Self {
-        match s.chars().next().map(|c| c.to_ascii_lowercase() ) {
-            Some('g') => Self::Groups,
-            Some('t') => Self::Tree,
-            Some('d') => Self::Diff,
-            Some('-') => Self::Disabled,
-            _ => panic!("Invalid output mode"),
-        }
-    }
+#[derive(ValueEnum, Clone)]
+pub enum DedupMode {
+    Btrfs
 }
