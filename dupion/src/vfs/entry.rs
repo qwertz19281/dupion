@@ -1,6 +1,6 @@
 use super::*;
 use std::{sync::{atomic::Ordering, Arc}, ffi::OsString};
-use util::{disp_relevant_files, Hash, disp_relevant_bytes, Size};
+use util::{DISP_RELEVANT_FILES, Hash, DISP_RELEVANT_BYTES, Size};
 
 use state::State;
 
@@ -28,7 +28,10 @@ pub struct VfsEntry {
     pub treediff_stat: u8,
     pub dedup_state: Option<bool>,
     pub phys: Option<u64>,
+    pub n_extends: Option<usize>,
 }
+
+const _: () = assert!(std::mem::size_of::<VfsEntry>() == 192);
 
 impl VfsEntry {
     pub fn new(path: Arc<Path>) -> Self {
@@ -54,14 +57,15 @@ impl VfsEntry {
             treediff_stat: 0,
             dedup_state: None,
             phys: Some(0),
+            n_extends: None,
         }
     }
 
     pub fn disp_add_relevant(&mut self) {
         if !self.disp_relevated && self.file_hash.is_none() {
             let size = self.file_size.unwrap();
-            disp_relevant_bytes.fetch_add(size,Ordering::Relaxed);
-            disp_relevant_files.fetch_add(1,Ordering::Relaxed);
+            DISP_RELEVANT_BYTES.fetch_add(size,Ordering::Relaxed);
+            DISP_RELEVANT_FILES.fetch_add(1,Ordering::Relaxed);
             self.disp_relevated = true;
         }
     }
@@ -96,10 +100,10 @@ impl VfsEntry {
         }
     }
     pub fn file_props(&self) -> (Option<Size>,Option<Hash>) {
-        (self.file_size.clone(),self.file_hash.clone())
+        (self.file_size,self.file_hash.clone())
     }
     pub fn dir_props(&self) -> (Option<Size>,Option<Hash>) {
-        (self.dir_size.clone(),self.dir_hash.clone())
+        (self.dir_size,self.dir_hash.clone())
     }
 
     pub fn exists(&self) -> bool {
@@ -179,13 +183,14 @@ impl State {
             self.set_valid(id)
         }else{
             let s = &mut self.tree[id];
-            //eprintln!("MISS {}",s.path.to_string_lossy());
+            //dprintln!("MISS {}",s.path.to_string_lossy());
             s.file_size = None;
             s.file_hash = None;
             s.dir_size = None;
             s.dir_hash = None;
             s.dedup_state = None;
             s.phys = Some(0);
+            s.n_extends = None;
             s.ctime = Some(ctime);
             s.valid = true;
             false

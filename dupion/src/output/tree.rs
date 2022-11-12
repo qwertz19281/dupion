@@ -35,7 +35,7 @@ impl<'a> Serialize for TreeRoot<'a> {
                 let name = reduce_path(path,path,true);
                 (name,DirEntry{
                     state: self.state,
-                    id: id,
+                    id,
                     root_path: path,
                     force_absolute_paths: self.force_absolute_paths,
                 })
@@ -59,13 +59,13 @@ impl<'a> Serialize for DirEntry<'a> {
                     dups = self.state.num_hashes(&h);
                     assert!(dups != 0);
                 }
-                //eprintln!("{}",self.state.tree[cid].path.to_str().unwrap());
+                //dprintln!("{}",self.state.tree[cid].path.to_str().unwrap());
                 let ip = self.state.tree[cid].icon_prio2();
                 (dups,cid,s.unwrap_or(0),ip)
             })
             .collect::<Vec<_>>();
         
-        childion.sort_by_key(|v| (v.3,Reverse(v.0.max(1).min(2)),Reverse(v.2)) );
+        childion.sort_by_key(|&(pos,_,size,prio)| (prio,Reverse(pos.max(1).min(2)),Reverse(size)) );
 
         let iter = childion.iter()
             .map(|(dups,id,size,_)| {
@@ -138,7 +138,7 @@ pub fn print_tree(state: &State, opts: &Opts) {
         .collect::<Vec<_>>();
     
     let ser = TreeRoot{
-        state: state,
+        state,
         roots,
         force_absolute_paths: opts.force_absolute_paths,
     };

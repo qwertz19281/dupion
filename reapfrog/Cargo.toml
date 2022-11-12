@@ -1,6 +1,6 @@
 [package]
 name = "reapfrog"
-version = "0.2.0"
+version = "0.0.0"
 authors = ["The 8472"]
 description = "Readahead and dropbehind over multiple files"
 keywords = ["linux", "ext4"]
@@ -8,7 +8,7 @@ repository = "https://github.com/the8472/reapfrog"
 readme = "README.md"
 categories = ["filesystem"]
 license = "MPL-2.0"
-edition = "2018"
+edition = "2021"
 
 include = [
     "**/*.rs",

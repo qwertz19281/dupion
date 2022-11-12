@@ -103,7 +103,7 @@ impl State {
             //only hash if non-unique size or possible archive
             do_hash &= self.more_than_one_size(self.tree[id].file_size.unwrap());
             //only hash if min file size or possible archive
-            do_hash &= self.tree[id].file_size.unwrap() >= opts.scan_size_min;
+            do_hash &= self.tree[id].file_size.unwrap() >= opts.scan_size_min && self.tree[id].file_size.unwrap() <= opts.scan_size_max;
         }
         //hash anyway if possible archive and not dir (happens if archive-scanning was disabled in previous cache)
         do_hash |= opts.zip_by_extension(&self.tree[id].path) && self.tree[id].is_file && !self.tree[id].is_dir;

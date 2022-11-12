@@ -1,11 +1,8 @@
 use super::*;
 use state::State;
 use group::HashGroup;
-use size_format::SizeFormatterBinary;
-use opts::Opts;
 use vfs::VfsId;
 use util::{Hash, Size};
-use sha2::{Digest, Sha512};
 use std::{sync::Arc, io::Write, cmp::Reverse};
 
 pub fn export(b: &mut State) -> Vec<HashGroup> {
@@ -40,7 +37,7 @@ pub fn calculate_dir_hash(state: &mut State, id: VfsId) -> Result<(Size,Hash),()
     assert!(state.tree[id].dir_size.is_none());
     if state.tree[id].is_file && !state.tree[id].is_dir {
         let (size,hash) = state.tree[id].file_props();
-        //eprintln!("{},{:?},{}",state.tree[id].path.to_string_lossy(),state.tree[id].size,state.tree[id].hash.is_some());
+        //dprintln!("{},{:?},{}",state.tree[id].path.to_string_lossy(),state.tree[id].size,state.tree[id].hash.is_some());
         assert!(size.is_some());
         return Ok((
             size.ok_or(())?,
@@ -50,7 +47,7 @@ pub fn calculate_dir_hash(state: &mut State, id: VfsId) -> Result<(Size,Hash),()
     if !state.tree[id].is_dir {
         return Err(());
     }
-    //eprintln!("Hash Dir {}",state.tree[id].path.to_string_lossy());
+    //dprintln!("Hash Dir {}",state.tree[id].path.to_string_lossy());
     assert!(state.tree[id].is_dir);
     //assert!(sf_size.is_none()); //TODO invalid if archive support
 
@@ -79,20 +76,20 @@ pub fn calculate_dir_hash(state: &mut State, id: VfsId) -> Result<(Size,Hash),()
 
     hashes.sort();
 
-    let mut hasher = Sha512::new();
+    let mut hasher = blake3::Hasher::new();
 
     for (h,n) in hashes {
-        hasher.write(n.as_ref()).unwrap();
-        hasher.write(&**h).unwrap();
+        hasher.update(n.as_ref());
+        hasher.update(&*h);
     }
 
-    let hash = Arc::new(hasher.finalize());
+    let hash = Arc::new(hasher.finalize().into());
 
-    //eprintln!("Hashed Dir {}",state.tree[id].path.to_string_lossy());
-    //eprintln!("{} {}",size,encode_hash(&hash));
+    //dprintln!("Hashed Dir {}",state.tree[id].path.to_string_lossy());
+    //dprintln!("{} {}",size,encode_hash(&hash));
 
     state.tree[id].dir_size = Some(size);
-    state.tree[id].dir_hash = Some(hash.clone());
+    state.tree[id].dir_hash = Some(Arc::clone(&hash));
     state.tree[id].valid = true;
 
     state.push_to_size_group(id,false,true).unwrap();

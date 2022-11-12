@@ -1,7 +1,5 @@
 use super::*;
-use std::sync::Arc;
-use sha2::digest::generic_array::GenericArray;
-use sha2::digest::generic_array::typenum::U64;
+use std::{sync::Arc, ops::Range};
 use group::{SizeGroup, HashGroup};
 use std::{io::{Seek, Read}, sync::{atomic::{Ordering, AtomicUsize, AtomicBool, AtomicU64}}, time::Duration, ops::{DerefMut, Deref}};
 use parking_lot::RawMutex;
@@ -11,22 +9,24 @@ use maligned::align_first;
 use maligned::A4096;
 
 pub type Size = u64;
-pub type Hash = Arc<GenericArray<u8,U64>>;
+pub type Hash = Arc<[u8;32]>;
 
 pub type Sizes = rustc_hash::FxHashMap<Size,SizeGroup>;
 pub type Hashes = rustc_hash::FxHashMap<Hash,HashGroup>;
 
-pub static disp_found_bytes: AtomicU64 = AtomicU64::new(0);
-pub static disp_found_files: AtomicU64 = AtomicU64::new(0);
-pub static disp_relevant_bytes: AtomicU64 = AtomicU64::new(0);
-pub static disp_relevant_files: AtomicU64 = AtomicU64::new(0);
-pub static disp_processed_bytes: AtomicU64 = AtomicU64::new(0);
-pub static disp_processed_files: AtomicU64 = AtomicU64::new(0);
-pub static disp_deduped_bytes: AtomicU64 = AtomicU64::new(u64::MAX);
-pub static disp_prev: AtomicU64 = AtomicU64::new(0);
-pub static disp_enabled: AtomicBool = AtomicBool::new(false);
-pub static vfs_store_notif: AtomicBool = AtomicBool::new(false);
-pub static alloc_mon: AtomicUsize = AtomicUsize::new(0);
+pub static DISP_ANSI: AtomicBool = AtomicBool::new(false);
+
+pub static DISP_FOUND_BYTES: AtomicU64 = AtomicU64::new(0);
+pub static DISP_FOUND_FILES: AtomicU64 = AtomicU64::new(0);
+pub static DISP_RELEVANT_BYTES: AtomicU64 = AtomicU64::new(0);
+pub static DISP_RELEVANT_FILES: AtomicU64 = AtomicU64::new(0);
+pub static DISP_PROCESSED_BYTES: AtomicU64 = AtomicU64::new(0);
+pub static DISP_PROCESSED_FILES: AtomicU64 = AtomicU64::new(0);
+pub static DISP_DEDUPED_BYTES: AtomicU64 = AtomicU64::new(u64::MAX);
+pub static DISP_PREV: AtomicU64 = AtomicU64::new(0);
+pub static DISP_ENABLED: AtomicBool = AtomicBool::new(false);
+pub static VFS_STORE_NOTIF: AtomicBool = AtomicBool::new(false);
+pub static ALLOC_MON: AtomicUsize = AtomicUsize::new(0);
 
 pub struct MutexedReader<R> {
     pub inner: R,
@@ -94,13 +94,13 @@ pub struct AllocMonBuf(Vec<u8>);
 
 impl AllocMonBuf {
     pub fn new(size: usize, alloc_thresh: usize) -> Self {
-        while alloc_mon.load(Ordering::Acquire)+size > alloc_thresh {
+        while ALLOC_MON.load(Ordering::Relaxed)+size > alloc_thresh {
             std::thread::sleep(Duration::from_millis(50));
         }
         let buf = align_first::<_,A4096>(size);
         assert_eq!(buf.len(),size);
         assert_eq!(buf.capacity(),size);
-        alloc_mon.fetch_add(size, Ordering::AcqRel);
+        ALLOC_MON.fetch_add(size, Ordering::Relaxed);
         Self(buf)
     }
 }
@@ -118,7 +118,7 @@ impl DerefMut for AllocMonBuf {
 }
 impl Drop for AllocMonBuf {
     fn drop(&mut self) {
-        alloc_mon.fetch_sub(self.capacity(), Ordering::AcqRel);
+        ALLOC_MON.fetch_sub(self.capacity(), Ordering::Relaxed);
     }
 }
 
@@ -164,23 +164,23 @@ impl Drop for ZeroLock {
 }
 
 pub struct CacheUsable {
-    max: u64,
+    range: Range<u64>,
     sys: System,
 }
 
 impl CacheUsable {
-    pub fn new(max: u64) -> Self {
+    pub fn new(range: Range<u64>) -> Self {
         Self{
-            max,
+            range,
             sys: System::new(),
         }
     }
 
     pub fn get(&mut self) -> u64 {
         self.sys.refresh_memory();
-        let sys_available = self.sys.get_total_memory() - self.sys.get_used_memory();
-        let for_caching = (sys_available*1000/2+1024)/4096*4096;
-        for_caching.min(self.max)
+        let sys_available = self.sys.total_memory() - self.sys.used_memory();
+        let for_caching = (sys_available/2+1024)/65536*65536;
+        for_caching.clamp(self.range.start,self.range.end)
     }
 }
 

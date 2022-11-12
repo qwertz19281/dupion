@@ -4,11 +4,14 @@ use vfs::is_absolute;
 
 pub struct Opts {
     pub paths: Vec<PathBuf>,
+    pub cache_path: PathBuf,
     pub verbose: bool,
     pub shadow_rule: u8,
     pub force_absolute_paths: bool,
     pub read_buffer: usize,
+    pub cache_dropbehind: bool,
     pub prefetch_budget: u64,
+    pub dedup_budget: u64,
     //pub huge_zip_thres: u64,
     pub threads: usize,
     pub pass_1_hash: bool,
@@ -16,6 +19,9 @@ pub struct Opts {
     pub dir_prefetch: bool,
     pub read_archives: bool,
     pub scan_size_min: u64,
+    pub scan_size_max: u64,
+    pub aggressive_dedup: bool,
+    pub dedup_simulate: bool,
 }
 
 impl Opts {
@@ -32,7 +38,7 @@ impl Opts {
     pub fn log_verbosed(&self, prefix: &str, path: &Path) {
         if self.verbose {
             let s = self.path_disp(path);
-            eprintln!("\t{} {}",prefix,s);
+            dprintln!("\t{} {}",prefix,s);
         }
     }
     pub fn path_disp<'a>(&self, path: &'a Path) -> &'a str {
