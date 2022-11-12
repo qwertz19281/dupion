@@ -1,8 +1,1 @@
 target
-*.code-workspace
-.vscode
-ee
-ioctl
-dupion_cache
-dupion/ot.html
-dupion/dedupion_cache
