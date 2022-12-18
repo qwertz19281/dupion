@@ -29,40 +29,60 @@ pub struct BtrfsInodeItemData {
 
 impl BtrfsInodeItemData {
     pub fn debug_struct(&self, debug_struct: &mut DebugStruct) {
-        debug_struct.field("generation", &self.generation);
+        let Self {
+            generation,
+            transaction_id,
+            st_size,
+            st_blocks,
+            block_group,
+            st_nlink,
+            st_uid,
+            st_gid,
+            st_mode,
+            st_rdev,
+            flags,
+            sequence,
+            st_atime,
+            st_ctime,
+            st_mtime,
+            st_otime,
+            ..
+        } = *self;
 
-        debug_struct.field("transaction_id", &self.transaction_id);
+        debug_struct.field("generation", &generation);
 
-        debug_struct.field("st_size", &self.st_size);
+        debug_struct.field("transaction_id", &transaction_id);
 
-        debug_struct.field("st_blocks", &self.st_blocks);
+        debug_struct.field("st_size", &st_size);
 
-        debug_struct.field("block_group", &self.block_group);
+        debug_struct.field("st_blocks", &st_blocks);
 
-        debug_struct.field("st_nlink", &self.st_nlink);
+        debug_struct.field("block_group", &block_group);
 
-        debug_struct.field("st_uid", &self.st_uid);
+        debug_struct.field("st_nlink", &st_nlink);
 
-        debug_struct.field("st_gid", &self.st_gid);
+        debug_struct.field("st_uid", &st_uid);
+
+        debug_struct.field("st_gid", &st_gid);
 
         debug_struct.field(
             "st_mode",
-            &NakedString::from(format!("0o{:5o}", self.st_mode)),
+            &NakedString::from(format!("0o{st_mode:5o}")),
         );
 
-        debug_struct.field("st_rdev", &self.st_rdev);
+        debug_struct.field("st_rdev", &st_rdev);
 
-        debug_struct.field("flags", &self.flags);
+        debug_struct.field("flags", &flags);
 
-        debug_struct.field("sequence", &self.sequence);
+        debug_struct.field("sequence", &sequence);
 
-        debug_struct.field("st_atime", &NakedString::from(self.st_atime.to_string()));
+        debug_struct.field("st_atime", &NakedString::from(st_atime.to_string()));
 
-        debug_struct.field("st_ctime", &NakedString::from(self.st_ctime.to_string()));
+        debug_struct.field("st_ctime", &NakedString::from(st_ctime.to_string()));
 
-        debug_struct.field("st_mtime", &NakedString::from(self.st_mtime.to_string()));
+        debug_struct.field("st_mtime", &NakedString::from(st_mtime.to_string()));
 
-        debug_struct.field("st_otime", &NakedString::from(self.st_otime.to_string()));
+        debug_struct.field("st_otime", &NakedString::from(st_otime.to_string()));
     }
 }
 

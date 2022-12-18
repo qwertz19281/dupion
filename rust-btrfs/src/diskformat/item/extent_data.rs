@@ -127,17 +127,21 @@ impl<'a> BtrfsExtentData<'a> {
 
             let raw_data = &self.data_bytes[raw_data_start..raw_data_end];
 
-            if self.data().encryption != 0 {
+            let BtrfsExtentDataData {
+                encryption,
+                other_encoding,
+                ..
+            } = *self.data();
+
+            if encryption != 0 {
                 return Err(format!(
-                    "Unrecognised encryption type {}",
-                    self.data().encryption
+                    "Unrecognised encryption type {encryption}",
                 ));
             }
 
-            if self.data().other_encoding != 0 {
+            if other_encoding != 0 {
                 return Err(format!(
-                    "Unrecognised other encoding type {}",
-                    self.data().other_encoding
+                    "Unrecognised other encoding type {other_encoding}",
                 ));
             }
 

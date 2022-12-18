@@ -34,69 +34,94 @@ pub struct BtrfsRootBackup {
 
 impl Debug for BtrfsRootBackup {
     fn fmt(&self, formatter: &mut Formatter) -> Result<(), FmtError> {
+        let Self {
+            tree_root,
+            tree_root_gen,
+            chunk_root,
+            chunk_root_gen,
+            extent_root,
+            extent_root_gen,
+            fs_root,
+            fs_root_gen,
+            dev_root,
+            dev_root_gen,
+            csum_root,
+            csum_root_gen,
+            total_bytes,
+            bytes_used,
+            num_devices,
+            tree_root_level,
+            chunk_root_level,
+            extent_root_level,
+            fs_root_level,
+            dev_root_level,
+            csum_root_level,
+            ..
+        } = *self;
+
         let mut debug_struct = formatter.debug_struct("BtrfsRootBackup");
 
         debug_struct.field(
             "tree_root",
-            &NakedString::from(format!("0x{:x}", self.tree_root)),
+            &NakedString::from(format!("0x{tree_root:x}")),
         );
 
-        debug_struct.field("tree_root_gen", &self.tree_root_gen);
+        debug_struct.field("tree_root_gen", &tree_root_gen);
 
         debug_struct.field(
             "chunk_root",
-            &NakedString::from(format!("0x{:x}", self.chunk_root)),
+            &NakedString::from(format!("0x{chunk_root:x}")),
         );
 
-        debug_struct.field("chunk_root_gen", &self.chunk_root_gen);
+        debug_struct.field("chunk_root_gen", &chunk_root_gen);
 
         debug_struct.field(
             "extent_root",
-            &NakedString::from(format!("0x{:x}", self.extent_root)),
+            &NakedString::from(format!("0x{extent_root:x}")),
         );
 
-        debug_struct.field("extent_root_gen", &self.extent_root_gen);
+        debug_struct.field("extent_root_gen", &extent_root_gen);
 
         debug_struct.field(
             "fs_root",
-            &NakedString::from(format!("0x{:x}", self.fs_root)),
+            &NakedString::from(format!("0x{fs_root:x}")),
         );
 
-        debug_struct.field("fs_root_gen", &self.fs_root_gen);
+        debug_struct.field("fs_root_gen", &fs_root_gen);
 
         debug_struct.field(
             "dev_root",
-            &NakedString::from(format!("0x{:x}", self.dev_root)),
+            &NakedString::from(format!("0x{dev_root:x}")),
         );
 
-        debug_struct.field("dev_root_gen", &self.dev_root_gen);
+        debug_struct.field("dev_root_gen", &dev_root_gen);
 
         debug_struct.field(
             "csum_root",
-            &NakedString::from(format!("0x{:x}", self.csum_root)),
+            &NakedString::from(format!("0x{csum_root:x}")),
         );
 
-        debug_struct.field("csum_root_gen", &self.csum_root_gen);
+        debug_struct.field("csum_root_gen", &csum_root_gen);
 
-        debug_struct.field("total_bytes", &self.total_bytes);
+        debug_struct.field("total_bytes", &total_bytes);
 
-        debug_struct.field("bytes_used", &self.bytes_used);
+        debug_struct.field("bytes_used", &bytes_used);
 
-        debug_struct.field("num_devices", &self.num_devices);
+        debug_struct.field("num_devices", &num_devices);
 
-        debug_struct.field("num_devices", &self.num_devices);
+        debug_struct.field("num_devices", &num_devices);
 
-        debug_struct.field("tree_root_level", &self.tree_root_level);
+        debug_struct.field("tree_root_level", &tree_root_level);
 
-        debug_struct.field("chunk_root_level", &self.chunk_root_level);
+        debug_struct.field("chunk_root_level", &chunk_root_level);
 
-        debug_struct.field("extent_root_level", &self.extent_root_level);
+        debug_struct.field("extent_root_level", &extent_root_level);
 
-        debug_struct.field("fs_root_level", &self.fs_root_level);
+        debug_struct.field("fs_root_level", &fs_root_level);
 
-        debug_struct.field("dev_root_level", &self.dev_root_level);
+        debug_struct.field("dev_root_level", &dev_root_level);
 
-        debug_struct.field("csum_root_level", &self.csum_root_level);
+        debug_struct.field("csum_root_level", &csum_root_level);
 
         debug_struct.finish()
     }
