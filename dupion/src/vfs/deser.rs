@@ -79,7 +79,7 @@ impl<'a> EntryIntermediateMsgPack<'a> {
             ctime: self.ctime,
             file_size: self.file_size,
             dir_size: None,
-            file_hash: self.file_hash.map(|h| intern_hash_raw(&h, interner) ).transpose()?,
+            file_hash: self.file_hash.and_then(|h| intern_hash_raw(&h, interner).transpose() ).transpose()?,
             dir_hash: None,
             childs: self.childs,
             valid: false,
@@ -110,7 +110,7 @@ impl<'a> EntryIntermediateJson<'a> {
             ctime: self.ctime,
             file_size: self.file_size,
             dir_size: None,
-            file_hash: self.file_hash.map(|h| decode_and_intern_hash_base64(&h, interner) ).transpose()?,
+            file_hash: self.file_hash.and_then(|h| decode_and_intern_hash_base64(&h, interner).transpose() ).transpose()?,
             dir_hash: None,
             childs: self.childs,
             valid: false,
@@ -294,13 +294,13 @@ const BASE64_BUF_IN: usize = 44;
 const BASE64_BUF_BUF: usize = 64;
 const _: () = assert!(BASE64_BUF_BUF >= HASH_SIZE);
 
-pub fn decode_and_intern_hash_base64(h: &str, interner: &mut InternSet) -> anyhow::Result<Hash> {
-    if h.len() > BASE64_BUF_IN {bail!("Invalid hash length");} //TODO handle the hash upgrade properly
+pub fn decode_and_intern_hash_base64(h: &str, interner: &mut InternSet) -> anyhow::Result<Option<Hash>> {
+    // Discard old sha512 hashes
+    if h.len() > BASE64_BUF_IN {return Ok(None);}
 
     let mut decoded = [0u8;BASE64_BUF_BUF];
-    assert_eq!(
-        BASE64_ENGINE.decode_slice(h, &mut decoded).unwrap(),
-        HASH_SIZE,
+    anyhow::ensure!(
+        BASE64_ENGINE.decode_slice(h, &mut decoded)? == HASH_SIZE
     );
 
     let mut truncated = [0u8;HASH_SIZE];
@@ -309,16 +309,16 @@ pub fn decode_and_intern_hash_base64(h: &str, interner: &mut InternSet) -> anyho
         truncated[i] = decoded[i];
     }
 
-    Ok(
+    Ok(Some(
         interner.get_or_insert_with(&truncated, |v| {
             debug_assert_eq!(v, &truncated);
             Arc::new(truncated)
         })
         .clone()
-    )
+    ))
 }
 
-pub fn intern_hash_raw(h: &[u8], interner: &mut InternSet) -> anyhow::Result<Hash> {
+pub fn intern_hash_raw(h: &[u8], interner: &mut InternSet) -> anyhow::Result<Option<Hash>> {
     if h.len() != HASH_SIZE {bail!("Invalid hash length");}
 
     let mut truncated = [0u8;HASH_SIZE];
@@ -327,11 +327,11 @@ pub fn intern_hash_raw(h: &[u8], interner: &mut InternSet) -> anyhow::Result<Has
         truncated[i] = h[i];
     }
 
-    Ok(
+    Ok(Some(
         interner.get_or_insert_with(&truncated, |v| {
             debug_assert_eq!(v, &truncated);
             Arc::new(truncated)
         })
         .clone()
-    )
+    ))
 }
