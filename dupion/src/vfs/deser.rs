@@ -18,11 +18,11 @@ use util::{VFS_STORE_NOTIF, Hash, Size};
 use std::fs::File;
 
 #[derive(Serialize,Deserialize)]
-struct EntryIntermediateJson<'a> {
+struct EntryIntermediateMsgPack<'a> {
     path: Cow<'a,str>,
     ctime: Option<i64>,
     file_size: Option<Size>,
-    file_hash: Option<Cow<'a,str>>,
+    file_hash: Option<ByteBuf>,
     childs: Vec<VfsId>,
     was_file: bool,
     was_dir: bool,
@@ -35,12 +35,12 @@ struct EntryIntermediateJson<'a> {
     phys: Option<u64>,
 }
 
-#[derive(Serialize,Deserialize)]
-struct EntryIntermediateMsgPack<'a> {
+#[derive(Deserialize)]
+struct EntryIntermediateJson<'a> {
     path: Cow<'a,str>,
     ctime: Option<i64>,
     file_size: Option<Size>,
-    file_hash: Option<ByteBuf>,
+    file_hash: Option<Cow<'a,str>>,
     childs: Vec<VfsId>,
     was_file: bool,
     was_dir: bool,
@@ -295,7 +295,7 @@ const BASE64_BUF_BUF: usize = 64;
 const _: () = assert!(BASE64_BUF_BUF >= HASH_SIZE);
 
 pub fn decode_and_intern_hash_base64(h: &str, interner: &mut InternSet) -> anyhow::Result<Hash> {
-    if h.len() != BASE64_BUF_IN {bail!("Invalid hash length");} //TODO handle the hash upgrade properly
+    if h.len() > BASE64_BUF_IN {bail!("Invalid hash length");} //TODO handle the hash upgrade properly
 
     let mut decoded = [0u8;BASE64_BUF_BUF];
     assert_eq!(
