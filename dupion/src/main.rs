@@ -232,7 +232,7 @@ pub struct OptInput {
     #[arg(long, default_value_t = 32.0)]
     pub prefetch_budget: f64,
     /// EXPERIMENTAL Dedup budget in MiB
-    #[arg(long, default_value_t = 256.0)]
+    #[arg(long, default_value_t = 512.0)]
     pub dedup_budget: f64,
     /// Threaded archive read cache limit in MiB
     #[arg(long, default_value_t = 1024.0)]
