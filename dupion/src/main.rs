@@ -8,7 +8,7 @@ use dupion::dprintln;
 fn main() {
     setlocale_hack();
 
-    DISP_ANSI.store(atty::is(atty::Stream::Stderr), Ordering::Relaxed);
+    DISP_ANSI.store(stderr().is_terminal(), Ordering::Relaxed);
 
     let o = OptInput::parse();
 
