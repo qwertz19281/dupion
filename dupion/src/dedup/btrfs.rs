@@ -115,28 +115,32 @@ impl Deduper for BtrfsDedup {
 pub fn dedup_group_batch(current: &[(&DedupGroup,bool)], state: &mut State, opts: &'static Opts, batch_size: u64) -> AnyhowResult<()> {
     let real = !opts.dedup_simulate;
 
-    dprintln!(
-        "Batch {} groups with {} dups, {}B",
-        current.len(),
-        current.iter()
-            .map(|(g,_)| g.dups.len() )
-            .sum::<usize>(),
-        SizeFormatterBinary::new(batch_size)
-    );
+    if opts.verbose {
+        dprintln!(
+            "Batch {} groups with {} dups, {}B",
+            current.len(),
+            current.iter()
+                .map(|(g,_)| g.dups.len() )
+                .sum::<usize>(),
+            SizeFormatterBinary::new(batch_size)
+        );
+    }
 
     if opts.dedup_simulate {
         for &(group,last_part) in current {
             if group.dups.is_empty() {
                 continue;
             }
-    
-            dprintln!(
-                "\tGroup {}B..{}B -> {} ({})",
-                SizeFormatterBinary::new(group.range.start),
-                SizeFormatterBinary::new(group.range.end),
-                opts.path_disp(&state.tree[group.senpai].path),
-                group.dups.len()+1,
-            );
+
+            if opts.verbose {
+                dprintln!(
+                    "\tGroup {}B..{}B -> {} ({})",
+                    SizeFormatterBinary::new(group.range.start),
+                    SizeFormatterBinary::new(group.range.end),
+                    opts.path_disp(&state.tree[group.senpai].path),
+                    group.dups.len()+1,
+                );
+            }
 
             DISP_PROCESSED_BYTES.fetch_add(group.dups.len() as u64 * (group.range.end - group.range.start),Ordering::Relaxed);
             if last_part {
@@ -185,13 +189,16 @@ pub fn dedup_group_batch(current: &[(&DedupGroup,bool)], state: &mut State, opts
             continue;
         }
 
-        dprintln!(
-            "\tGroup {}B..{}B -> {} ({})",
-            SizeFormatterBinary::new(group.range.start),
-            SizeFormatterBinary::new(group.range.end),
-            opts.path_disp(&state.tree[group.senpai].path),
-            group.dups.len()+1,
-        );
+        if opts.verbose {
+            dprintln!(
+                "\tGroup {}B..{}B -> {} ({})",
+                SizeFormatterBinary::new(group.range.start),
+                SizeFormatterBinary::new(group.range.end),
+                opts.path_disp(&state.tree[group.senpai].path),
+                group.dups.len()+1,
+            );
+        }
+
         let senpai_fd = match open_dup(&group,group.senpai) {
             Ok(v) => v,
             Err(_) => continue 'g,
@@ -266,13 +273,16 @@ pub fn dedup_group_batch(current: &[(&DedupGroup,bool)], state: &mut State, opts
     for (group,senpai_fd,dups_fd,last_part) in opened {
         assert_eq!(dups_fd.len(),group.dups.len());
         let senpai_path = &state.tree[group.senpai].path;
-        dprintln!(
-            "\tDedup {}B..{}B -> {} ({})",
-            SizeFormatterBinary::new(group.range.start),
-            SizeFormatterBinary::new(group.range.end),
-            opts.path_disp(senpai_path),
-            dups_fd.len()+1,
-        );
+
+        if opts.verbose {
+            dprintln!(
+                "\tDedup {}B..{}B -> {} ({})",
+                SizeFormatterBinary::new(group.range.start),
+                SizeFormatterBinary::new(group.range.end),
+                opts.path_disp(senpai_path),
+                dups_fd.len()+1,
+            );
+        }
 
         let dest_infos: Vec<_> = dups_fd.iter()
             .map(|fd| DedupeRangeDestInfo {
