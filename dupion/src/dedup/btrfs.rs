@@ -56,7 +56,6 @@ impl Deduper for BtrfsDedup {
                     continue;
                 }
 
-                // just for sure
                 if gi >= groups.len() {
                     break;
                 }
@@ -247,7 +246,7 @@ pub fn dedup_group_batch(current: &[(&DedupGroup,bool)], state: &mut State, opts
     readahead.sort_by_key(|&(phys,..)| phys );
 
     if real {
-        for (_,fd,range) in &readahead {
+        for &(_,fd,range) in &readahead {
             unsafe{
                 libc::posix_fadvise(
                     fd.get_value(),
@@ -257,7 +256,7 @@ pub fn dedup_group_batch(current: &[(&DedupGroup,bool)], state: &mut State, opts
                 );
             }
         }
-        for (_,fd,range) in &readahead {
+        for &(_,fd,range) in &readahead {
             unsafe{
                 libc::posix_fadvise(
                     fd.get_value(),
@@ -284,27 +283,52 @@ pub fn dedup_group_batch(current: &[(&DedupGroup,bool)], state: &mut State, opts
             );
         }
 
-        let dest_infos: Vec<_> = dups_fd.iter()
+        fn dedup(group_range: &Range<u64>, senpai_fd: &FileDescriptor, dups_fd: &[FileDescriptor], real: bool) -> (Result<(),String>,DedupeRange) {
+            let dest_infos: Vec<_> = dups_fd.iter()
             .map(|fd| DedupeRangeDestInfo {
                 dest_fd: fd.get_value() as i64,
-                dest_offset: group.range.start,
+                dest_offset: group_range.start,
                 bytes_deduped: 0,
                 status: DedupeRangeStatus::Same,
             })
             .collect();
 
-        let mut dedup_range = DedupeRange {
-            src_offset: group.range.start,
-            src_length: group.range.end - group.range.start,
-            dest_infos,
-        };
+            let mut dedup_range = DedupeRange {
+                src_offset: group_range.start,
+                src_length: group_range.end - group_range.start,
+                dest_infos,
+            };
 
-        if real {
-            if let Err(e) = deduplicate_range(
-                senpai_fd.get_value(),
-                &mut dedup_range,
-            ) {
-                dprintln!("\tError deduplicating: {}",e);
+            if real {
+                let result = deduplicate_range(
+                    senpai_fd.get_value(),
+                    &mut dedup_range,
+                );
+    
+                (result,dedup_range)
+            } else {
+                (Ok(()),dedup_range)
+            }
+        }
+
+        let (result,dedup_range) = dedup(&group.range,&senpai_fd,&dups_fd,real);
+
+        let mut deduped = 0;
+
+        if let Err(e) = result {
+            dprintln!("\tError deduplicating: {}",e);
+
+            for (f,&id) in dups_fd.iter().zip(group.dups.iter()) {
+                let (result,dedup_range) = dedup(&group.range,&senpai_fd,std::slice::from_ref(f),real);
+
+                deduped += dedup_range.dest_infos[0].bytes_deduped;
+
+                if dedup_range.dest_infos[0].status == DedupeRangeStatus::Differs {
+                    let path = &state.tree[id].path;
+                    dprintln!("\t\tNot deduped {}",opts.path_disp(path));
+                } else {
+                    state.tree[id].dedup_state = Some(true);
+                }
             }
         }
 
@@ -313,12 +337,11 @@ pub fn dedup_group_batch(current: &[(&DedupGroup,bool)], state: &mut State, opts
             DISP_PROCESSED_FILES.fetch_add(group.dups.len() as u64,Ordering::Relaxed);
         }
 
-        let mut deduped = 0;
-
         for (i,&id) in dedup_range.dest_infos.iter().zip(group.dups.iter()) {
             deduped += i.bytes_deduped;
-            let path = &state.tree[id].path;
+            
             if i.status == DedupeRangeStatus::Differs {
+                let path = &state.tree[id].path;
                 dprintln!("\t\tNot deduped {}",opts.path_disp(path));
             } else {
                 state.tree[id].dedup_state = Some(true);
