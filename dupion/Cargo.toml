@@ -28,9 +28,9 @@ rustc-hash = "1.1"
 hashbrown = { version = "0.12", default-features = false, features = ["inline-more"] }
 atty = "0.2"
 
-[dependencies.maligned]
-version = "0.2"
-features = ["align-4k"]
+# [dependencies.maligned]
+# version = "0.2"
+# features = ["align-4k"]
 
 [dependencies.platter-walk]
 path = "../platter-walk"

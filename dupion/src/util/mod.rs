@@ -5,8 +5,6 @@ use std::{io::{Seek, Read}, sync::{atomic::{Ordering, AtomicUsize, AtomicBool, A
 use parking_lot::RawMutex;
 use parking_lot::lock_api::RawMutex as _;
 use sysinfo::*;
-use maligned::align_first;
-use maligned::A4096;
 
 pub type Size = u64;
 pub type Hash = Arc<[u8;32]>;
@@ -97,7 +95,7 @@ impl AllocMonBuf {
         while ALLOC_MON.load(Ordering::Relaxed)+size > alloc_thresh {
             std::thread::sleep(Duration::from_millis(50));
         }
-        let buf = align_first::<_,A4096>(size);
+        let buf = vec![0;size];
         assert_eq!(buf.len(),size);
         assert_eq!(buf.capacity(),size);
         ALLOC_MON.fetch_add(size, Ordering::Relaxed);
