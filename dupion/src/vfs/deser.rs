@@ -1,22 +1,24 @@
-use crate::util::CacheUsable;
+use crate::util::HASH_SIZE;
 
 use super::*;
 
 use base64::Engine;
 use rustc_hash::FxHasher;
 use serde::de::{Visitor, SeqAccess};
+use serde::ser::SerializeSeq;
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
+use serde_bytes::ByteBuf;
 use serde_derive::*;
 use std::borrow::Cow;
 use std::hash::BuildHasherDefault;
-use std::ops::Range;
+use std::io::BufRead;
 use std::{io::BufReader, sync::atomic::Ordering};
 use state::State;
 use util::{VFS_STORE_NOTIF, Hash, Size};
 use std::fs::File;
 
 #[derive(Serialize,Deserialize)]
-struct EntryIntermediate<'a> {
+struct EntryIntermediateJson<'a> {
     path: Cow<'a,str>,
     ctime: Option<i64>,
     file_size: Option<Size>,
@@ -33,25 +35,32 @@ struct EntryIntermediate<'a> {
     phys: Option<u64>,
 }
 
-impl Serialize for VfsEntry {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let i = EntryIntermediate::from_entry(self);
-
-        i.serialize(serializer)
-    }
+#[derive(Serialize,Deserialize)]
+struct EntryIntermediateMsgPack<'a> {
+    path: Cow<'a,str>,
+    ctime: Option<i64>,
+    file_size: Option<Size>,
+    file_hash: Option<ByteBuf>,
+    childs: Vec<VfsId>,
+    was_file: bool,
+    was_dir: bool,
+    ///use for libarchive fail, so if set and number smaller than current version, force rehash
+    #[serde(default)] 
+    upgrade: Option<u64>,
+    #[serde(default)] 
+    dedup_state: Option<bool>,
+    #[serde(default)] 
+    phys: Option<u64>,
 }
 
-impl<'a> EntryIntermediate<'a> {
+impl<'a> EntryIntermediateMsgPack<'a> {
     fn from_entry(entry: &'a VfsEntry) -> Self {
-        let file_hash = entry.file_hash.as_ref().map(encode_hash);
-        EntryIntermediate {
+        let file_hash = entry.file_hash.as_deref().map(|v| ByteBuf::from(Vec::<u8>::from(&v[..])));
+        Self {
             path: Cow::Borrowed(entry.path.to_str().unwrap()),
             ctime: entry.ctime,
             file_size: entry.file_size,
-            file_hash: file_hash.map(Cow::Owned),
+            file_hash,
             childs: entry.childs.clone(),
             was_file: entry.is_file || (entry.was_file && !entry.valid),
             was_dir: entry.is_dir || (entry.was_dir && !entry.valid),
@@ -64,13 +73,13 @@ impl<'a> EntryIntermediate<'a> {
     fn into_entry(self, interner: &mut InternSet) -> anyhow::Result<VfsEntry> {
         let path: Arc<Path> = PathBuf::from(self.path.as_ref()).into();
 
-        Ok(VfsEntry{
+        Ok(VfsEntry {
             plc: to_plc(&path),
             path,
             ctime: self.ctime,
             file_size: self.file_size,
             dir_size: None,
-            file_hash: self.file_hash.map(|h| decode_and_intern_hash(&h, interner) ).transpose()?,
+            file_hash: self.file_hash.map(|h| intern_hash_raw(&h, interner) ).transpose()?,
             dir_hash: None,
             childs: self.childs,
             valid: false,
@@ -91,35 +100,67 @@ impl<'a> EntryIntermediate<'a> {
     }
 }
 
-struct VfsEntries(Vec<VfsEntry>);
+impl<'a> EntryIntermediateJson<'a> {
+    fn into_entry(self, interner: &mut InternSet) -> anyhow::Result<VfsEntry> {
+        let path: Arc<Path> = PathBuf::from(self.path.as_ref()).into();
 
-impl Serialize for VfsEntries {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        self.0.serialize(serializer)
+        Ok(VfsEntry {
+            plc: to_plc(&path),
+            path,
+            ctime: self.ctime,
+            file_size: self.file_size,
+            dir_size: None,
+            file_hash: self.file_hash.map(|h| decode_and_intern_hash_base64(&h, interner) ).transpose()?,
+            dir_hash: None,
+            childs: self.childs,
+            valid: false,
+            is_file: false,
+            is_dir: false,
+            was_file: self.was_file,
+            was_dir: self.was_dir,
+            file_shadowed: false,
+            dir_shadowed: false,
+            unique: false,
+            disp_relevated: false,
+            failure: self.upgrade,
+            treediff_stat: 0,
+            dedup_state: self.dedup_state,
+            phys: None,
+            n_extends: None,
+        })
     }
 }
 
-impl<'de> Deserialize<'de> for VfsEntries {
-    fn deserialize<D>(deserializer: D) -> Result<VfsEntries, D::Error> where D: Deserializer<'de> {
+struct VfsEntriesMsgPack(Vec<VfsEntry>);
+struct VfsEntriesJson(Vec<VfsEntry>);
+
+impl<'de> Deserialize<'de> for VfsEntriesMsgPack {
+    fn deserialize<D>(deserializer: D) -> Result<VfsEntriesMsgPack, D::Error> where D: Deserializer<'de> {
         struct VfsEntryVisitor {
             interner: InternSet,
         }
 
         impl<'de> Visitor<'de> for VfsEntryVisitor {
-            type Value = VfsEntries;
+            type Value = VfsEntriesMsgPack;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("a sequence")
             }
 
             fn visit_seq<A>(mut self, mut seq: A) -> Result<Self::Value, A::Error> where A: SeqAccess<'de> {
-                let mut entries = Vec::with_capacity(16384);
+                let mut entries = Vec::with_capacity(
+                    seq.size_hint().map_or(16384, |s| s - 1 )
+                );
 
-                while let Some(value) = seq.next_element::<EntryIntermediate>()? {
+                if !seq.next_element::<CacheHeader>()?.is_some_and(|h| h.version == 4 ) {
+                    return Err(serde::de::Error::custom("Version not 4"));
+                }
+
+                while let Some(value) = seq.next_element::<EntryIntermediateMsgPack>()? {
                     entries.push(value.into_entry(&mut self.interner).map_err(serde::de::Error::custom)?);
                 }
 
-                Ok(VfsEntries(entries))
+                Ok(VfsEntriesMsgPack(entries))
             }
         }
 
@@ -131,6 +172,62 @@ impl<'de> Deserialize<'de> for VfsEntries {
     }
 }
 
+impl<'de> Deserialize<'de> for VfsEntriesJson {
+    fn deserialize<D>(deserializer: D) -> Result<VfsEntriesJson, D::Error> where D: Deserializer<'de> {
+        struct VfsEntryVisitor {
+            interner: InternSet,
+        }
+
+        impl<'de> Visitor<'de> for VfsEntryVisitor {
+            type Value = VfsEntriesJson;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a sequence")
+            }
+
+            fn visit_seq<A>(mut self, mut seq: A) -> Result<Self::Value, A::Error> where A: SeqAccess<'de> {
+                let mut entries = Vec::with_capacity(16384);
+
+                while let Some(value) = seq.next_element::<EntryIntermediateJson>()? {
+                    entries.push(value.into_entry(&mut self.interner).map_err(serde::de::Error::custom)?);
+                }
+
+                Ok(VfsEntriesJson(entries))
+            }
+        }
+
+        let visitor = VfsEntryVisitor {
+            interner: hashbrown::HashSet::with_capacity_and_hasher(16384,Default::default()),
+        };
+
+        deserializer.deserialize_seq(visitor)
+    }
+}
+
+#[derive(Serialize,Deserialize)]
+struct CacheHeader {
+    version: usize,
+}
+
+struct VfsEntriesSerialize<'a>(&'a [VfsEntry]);
+
+impl Serialize for VfsEntriesSerialize<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut serializer = serializer.serialize_seq(Some(self.0.len()+1))?;
+
+        serializer.serialize_element(&CacheHeader { version: 4 })?;
+
+        for entry in self.0 {
+            serializer.serialize_element(&EntryIntermediateMsgPack::from_entry(&entry))?;
+        }
+
+        serializer.end()
+    }
+}
+
 impl State {
     pub fn eventually_store_vfs(&self, path: &Path, force: bool) {
         self.try_eventually_store_vfs(path, force).unwrap_or_else(|e| dprintln!("Error writing cache: {e}") )
@@ -139,7 +236,10 @@ impl State {
     pub fn try_eventually_store_vfs(&self, path: &Path, force: bool) -> anyhow::Result<()> {
         if self.cache_allowed && (force || VFS_STORE_NOTIF.swap(false,Ordering::Relaxed)) {
             let mut stor = Vec::with_capacity(1024*1024);
-            serde_json::to_writer(&mut stor, &self.tree.entries)?;
+            let mut writer = zstd::stream::write::Encoder::new(&mut stor, 3)?;
+            let mut ser = rmp_serde::Serializer::new(&mut writer).with_struct_map();
+            VfsEntriesSerialize(&self.tree.entries).serialize(&mut ser)?;
+            writer.finish()?;
             std::fs::write(path,&stor)?;
             //dprintln!("Wrote cache");
         }
@@ -151,19 +251,21 @@ impl State {
     }
 
     pub fn try_eventually_load_vfs(&mut self, path: &Path) -> anyhow::Result<()> {
-        const BUF_THRES_RANGE: Range<u64> = 1024*1024*64 .. 1024*1024*1024;
-
         if self.cache_allowed {
             let path_meta = path.metadata()?;
             if path_meta.is_file() {
-                if path_meta.len() > CacheUsable::new(BUF_THRES_RANGE).get() {
-                    let reader = File::open(&path)?;
-                    let reader = BufReader::with_capacity(1024*1024,reader);
-                    let VfsEntries(entries) = serde_json::from_reader(reader)?;
+                let reader = File::open(&path)?;
+
+                let buf_reader_size = zstd::zstd_safe::DCtx::in_size() * 8;
+
+                let mut buf_reader = BufReader::with_capacity(buf_reader_size, reader);
+
+                if buf_reader.fill_buf()?.starts_with(&ZSTD_MAGIC_NUMBER) {
+                    let reader = zstd::stream::read::Decoder::with_buffer(buf_reader)?;
+                    let VfsEntriesMsgPack(entries) = rmp_serde::from_read(reader)?;
                     self.tree.entries = entries;
                 } else {
-                    let data = std::fs::read(&path)?;
-                    let VfsEntries(entries) = serde_json::from_slice(&data)?;
+                    let VfsEntriesJson(entries) = serde_json::from_reader(buf_reader)?;
                     self.tree.entries = entries;
                 }
             }
@@ -171,6 +273,8 @@ impl State {
         Ok(())
     }
 }
+
+const ZSTD_MAGIC_NUMBER: [u8;4] = 0xFD2F_B528_u32.to_le_bytes();
 
 const BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
     &base64::alphabet::STANDARD,
@@ -180,7 +284,7 @@ const BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPur
         .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent)
 );
 
-pub fn encode_hash(h: &Hash) -> String {
+pub fn encode_hash_base64(h: &Hash) -> String {
     BASE64_ENGINE.encode(&h[..])
 }
 
@@ -188,22 +292,39 @@ type InternSet = hashbrown::HashSet<Hash,BuildHasherDefault<FxHasher>>;
 
 const BASE64_BUF_IN: usize = 44;
 const BASE64_BUF_BUF: usize = 64;
-const BASE64_BUF_OUT: usize = 32;
-const _: () = assert!(BASE64_BUF_BUF >= BASE64_BUF_OUT);
+const _: () = assert!(BASE64_BUF_BUF >= HASH_SIZE);
 
-pub fn decode_and_intern_hash(h: &str, interner: &mut InternSet) -> anyhow::Result<Hash> {
+pub fn decode_and_intern_hash_base64(h: &str, interner: &mut InternSet) -> anyhow::Result<Hash> {
     if h.len() != BASE64_BUF_IN {bail!("Invalid hash length");} //TODO handle the hash upgrade properly
 
     let mut decoded = [0u8;BASE64_BUF_BUF];
     assert_eq!(
         BASE64_ENGINE.decode_slice(h, &mut decoded).unwrap(),
-        BASE64_BUF_OUT,
+        HASH_SIZE,
     );
 
-    let mut truncated = [0u8;BASE64_BUF_OUT];
+    let mut truncated = [0u8;HASH_SIZE];
 
-    for i in 0 .. BASE64_BUF_OUT {
+    for i in 0 .. HASH_SIZE {
         truncated[i] = decoded[i];
+    }
+
+    Ok(
+        interner.get_or_insert_with(&truncated, |v| {
+            debug_assert_eq!(v, &truncated);
+            Arc::new(truncated)
+        })
+        .clone()
+    )
+}
+
+pub fn intern_hash_raw(h: &[u8], interner: &mut InternSet) -> anyhow::Result<Hash> {
+    if h.len() != HASH_SIZE {bail!("Invalid hash length");}
+
+    let mut truncated = [0u8;HASH_SIZE];
+
+    for i in 0 .. HASH_SIZE {
+        truncated[i] = h[i];
     }
 
     Ok(
