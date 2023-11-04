@@ -32,34 +32,37 @@ impl BtrfsKey {
     }
 
     pub fn to_string_decimal(self) -> String {
-        format!("{}/{} @ {}", self.object_id, self.item_type, self.offset)
+        let Self {object_id, item_type, offset} = self;
+        format!("{object_id}/{item_type} @ {offset}")
     }
 
     pub fn to_string_no_type(self) -> String {
-        format!("{} @ 0x{:x}", self.object_id, self.offset)
+        let Self {object_id, offset, ..} = self;
+        format!("{object_id} @ 0x{offset:x}")
     }
 
     pub fn to_string_no_type_decimal(self) -> String {
-        format!("{} @ {}", self.object_id, self.offset)
+        let Self {object_id, offset, ..} = self;
+        format!("{object_id} @ {offset}")
     }
 }
 
 impl Debug for BtrfsKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        let Self {object_id, item_type, offset} = *self;
         write!(
             f,
-            "BtrfsKey ({}/{} @ 0x{:x})",
-            self.object_id, self.item_type, self.offset
+            "BtrfsKey ({object_id}/{item_type} @ 0x{offset:x})"
         )
     }
 }
 
 impl Display for BtrfsKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let Self {object_id, item_type, offset} = *self;
         write!(
             f,
-            "{}/{} @ 0x{:x}",
-            self.object_id, self.item_type, self.offset
+            "{object_id}/{item_type} @ 0x{offset:x}"
         )
     }
 }

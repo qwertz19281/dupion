@@ -45,17 +45,35 @@ impl BtrfsNodeHeader {
     }
 
     pub fn debug_struct(&self, debug_struct: &mut DebugStruct) {
-        debug_struct.field("checksum", &NakedString::from(self.checksum.to_string()));
+        let Self {
+            checksum,
+            fs_uuid,
+            logical_address,
+            flags_and_backref,
+            chunk_tree_uuid,
+            generation,
+            tree_id,
+            num_items,
+            level,
+        } = *self;
 
-        debug_struct.field("fs_uuid", &NakedString::from(self.fs_uuid.to_string()));
+        debug_struct.field("checksum", &NakedString::from(checksum.to_string()));
 
-        debug_struct.field("generation", &self.generation);
+        debug_struct.field("fs_uuid", &NakedString::from(fs_uuid.to_string()));
+        
+        debug_struct.field("logical_address", &logical_address);
 
-        debug_struct.field("tree_id", &NakedString::from(self.tree_id.to_string()));
+        debug_struct.field("flags_and_backref", &flags_and_backref);
 
-        debug_struct.field("num_items", &self.num_items);
+        debug_struct.field("chunk_tree_uuid", &chunk_tree_uuid);
 
-        debug_struct.field("level", &self.level);
+        debug_struct.field("generation", &generation);
+
+        debug_struct.field("tree_id", &NakedString::from(tree_id.to_string()));
+
+        debug_struct.field("num_items", &num_items);
+
+        debug_struct.field("level", &level);
     }
 }
 

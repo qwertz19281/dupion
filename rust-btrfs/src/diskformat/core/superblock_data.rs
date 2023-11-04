@@ -65,68 +65,107 @@ impl Clone for BtrfsSuperblockData {
 
 impl Debug for BtrfsSuperblockData {
     fn fmt(&self, formatter: &mut Formatter) -> Result<(), FmtError> {
+        let Self {
+            checksum,
+            fs_uuid,
+            physical_address,
+            flags,
+            magic,
+            generation,
+            root_tree_logical_address,
+            chunk_tree_logical_address,
+            log_tree_logical_address,
+            log_root_transid,
+            total_bytes,
+            bytes_used,
+            root_dir_objectid,
+            num_devices,
+            sector_size,
+            node_size,
+            leaf_size,
+            stripe_size,
+            system_chunks_size,
+            chunk_root_generation,
+            compat_flags,
+            compat_ro_flags,
+            incompat_flags,
+            csum_type,
+            root_level,
+            chunk_root_level,
+            log_root_level,
+            dev_item,
+            label,
+            cache_generation,
+            uuid_tree_generation,
+            ..
+        } = *self;
+
         let mut debug_struct = formatter.debug_struct("BtrfsSuperblockData");
 
-        debug_struct.field("checksum", &self.checksum);
+        debug_struct.field("checksum", &checksum);
 
-        debug_struct.field("fs_uuid", &self.fs_uuid);
+        debug_struct.field("fs_uuid", &fs_uuid);
 
-        debug_struct.field("physical_address", &self.physical_address);
+        debug_struct.field("physical_address", &physical_address);
 
-        debug_struct.field("flags", &self.flags);
+        debug_struct.field("flags", &flags);
 
-        debug_struct.field("magic", &self.magic);
+        debug_struct.field("magic", &magic);
 
-        debug_struct.field("generation", &self.generation);
+        debug_struct.field("generation", &generation);
 
-        debug_struct.field("root_tree_logical_address", &self.root_tree_logical_address);
+        debug_struct.field("root_tree_logical_address", &root_tree_logical_address);
 
         debug_struct.field(
             "chunk_tree_logical_address",
-            &self.chunk_tree_logical_address,
+            &chunk_tree_logical_address,
         );
 
-        debug_struct.field("log_tree_logical_address", &self.log_tree_logical_address);
+        debug_struct.field("log_tree_logical_address", &log_tree_logical_address);
 
-        debug_struct.field("log_root_transid", &self.log_root_transid);
+        debug_struct.field("log_root_transid", &log_root_transid);
 
-        debug_struct.field("total_bytes", &self.total_bytes);
+        debug_struct.field("total_bytes", &total_bytes);
 
-        debug_struct.field("bytes_used", &self.bytes_used);
+        debug_struct.field("bytes_used", &bytes_used);
 
-        debug_struct.field("root_dir_objectid", &self.root_dir_objectid);
+        debug_struct.field("root_dir_objectid", &root_dir_objectid);
 
-        debug_struct.field("num_devices", &self.num_devices);
+        debug_struct.field("num_devices", &num_devices);
 
-        debug_struct.field("sector_size", &self.sector_size);
+        debug_struct.field("sector_size", &sector_size);
 
-        debug_struct.field("node_size", &self.node_size);
+        debug_struct.field("node_size", &node_size);
 
-        debug_struct.field("leaf_size", &self.leaf_size);
+        debug_struct.field("leaf_size", &leaf_size);
 
-        debug_struct.field("stipe_size", &self.stripe_size);
+        debug_struct.field("stipe_size", &stripe_size);
 
-        debug_struct.field("system_chunks_size", &self.system_chunks_size);
+        debug_struct.field("system_chunks_size", &system_chunks_size);
 
-        debug_struct.field("chunk_root_generation", &self.chunk_root_generation);
+        debug_struct.field("chunk_root_generation", &chunk_root_generation);
 
-        debug_struct.field("compat_flags", &self.compat_flags);
+        debug_struct.field("compat_flags", &compat_flags);
 
-        debug_struct.field("compat_ro_flags", &self.compat_ro_flags);
+        debug_struct.field("compat_ro_flags", &compat_ro_flags);
 
-        debug_struct.field("incompat_flags", &self.incompat_flags);
+        debug_struct.field("incompat_flags", &incompat_flags);
 
-        debug_struct.field("csum_type", &self.csum_type);
+        debug_struct.field("csum_type", &csum_type);
 
-        debug_struct.field("root_level", &self.root_level);
+        debug_struct.field("root_level", &root_level);
 
-        debug_struct.field("chunk_root_level", &self.chunk_root_level);
+        debug_struct.field("chunk_root_level", &chunk_root_level);
 
-        debug_struct.field("log_root_level", &self.log_root_level);
+        debug_struct.field("log_root_level", &log_root_level);
 
-        debug_struct.field("dev_item", &self.dev_item);
+        debug_struct.field("dev_item", &dev_item);
 
-        debug_struct.field("label", &self.label);
+        debug_struct.field("label", &label);
+
+        debug_struct.field("cache_generation", &cache_generation);
+
+        debug_struct.field("uuid_tree_generation", &uuid_tree_generation);
 
         debug_struct.field("reserved", &"TODO".to_string());
 
