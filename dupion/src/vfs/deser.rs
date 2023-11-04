@@ -2,7 +2,7 @@ use crate::util::CacheUsable;
 
 use super::*;
 
-use base64::decode_config_slice;
+use base64::Engine;
 use rustc_hash::FxHasher;
 use serde::de::{Visitor, SeqAccess};
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
@@ -172,25 +172,44 @@ impl State {
     }
 }
 
+const BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
+    &base64::alphabet::STANDARD,
+    base64::engine::general_purpose::GeneralPurposeConfig::new()
+        .with_encode_padding(true)
+        .with_decode_allow_trailing_bits(true)
+        .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent)
+);
+
 pub fn encode_hash(h: &Hash) -> String {
-    base64::encode(&h[..])
+    BASE64_ENGINE.encode(&h[..])
 }
 
 type InternSet = hashbrown::HashSet<Hash,BuildHasherDefault<FxHasher>>;
 
-pub fn decode_and_intern_hash(h: &str, interner: &mut InternSet) -> anyhow::Result<Hash> {
-    if h.len() != 44 {bail!("Invalid hash length");} //TODO handle the hash upgrade properly
+const BASE64_BUF_IN: usize = 44;
+const BASE64_BUF_BUF: usize = 64;
+const BASE64_BUF_OUT: usize = 32;
+const _: () = assert!(BASE64_BUF_BUF >= BASE64_BUF_OUT);
 
-    let mut decoded = [0u8;32];
+pub fn decode_and_intern_hash(h: &str, interner: &mut InternSet) -> anyhow::Result<Hash> {
+    if h.len() != BASE64_BUF_IN {bail!("Invalid hash length");} //TODO handle the hash upgrade properly
+
+    let mut decoded = [0u8;BASE64_BUF_BUF];
     assert_eq!(
-        decode_config_slice(h, base64::STANDARD, &mut decoded)?,
-        decoded.len()
+        BASE64_ENGINE.decode_slice(h, &mut decoded).unwrap(),
+        BASE64_BUF_OUT,
     );
 
+    let mut truncated = [0u8;BASE64_BUF_OUT];
+
+    for i in 0 .. BASE64_BUF_OUT {
+        truncated[i] = decoded[i];
+    }
+
     Ok(
-        interner.get_or_insert_with(&decoded, |v| {
-            debug_assert_eq!(v, &decoded);
-            Arc::new(decoded)
+        interner.get_or_insert_with(&truncated, |v| {
+            debug_assert_eq!(v, &truncated);
+            Arc::new(truncated)
         })
         .clone()
     )
