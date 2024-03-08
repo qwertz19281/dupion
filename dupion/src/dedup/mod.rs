@@ -33,6 +33,7 @@ pub trait Deduper {
                     .filter(|&&(typ,id)| 
                         typ == VfsEntryType::File
                         && s.tree[id].phys.is_some()
+                        && s.tree[id].phys != Some(0)
                         && s.tree[id].valid
                         && s.tree[id].n_extends.is_some()
                     )
