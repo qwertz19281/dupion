@@ -8,6 +8,7 @@ use sysinfo::*;
 
 pub type Size = u64;
 pub type Hash = Arc<[u8;32]>;
+pub const HASH_SIZE: usize = 32;
 
 pub type Sizes = rustc_hash::FxHashMap<Size,SizeGroup>;
 pub type Hashes = rustc_hash::FxHashMap<Hash,HashGroup>;

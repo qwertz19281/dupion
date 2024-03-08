@@ -1,5 +1,5 @@
 use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{export, calculate_dir_hash, find_shadowed}, util::*, vfs::VfsId, zip::setlocale_hack, output::{tree::print_tree, groups::print_groups, treediff::print_treediff}, dedup::{Deduper, btrfs::BtrfsDedup}, print_statw, stat_section_start, stat_section_end};
-use std::{time::Duration, sync::{atomic::Ordering}, path::PathBuf};
+use std::{io::{stderr, IsTerminal as _}, path::PathBuf, sync::atomic::Ordering, time::Duration};
 use parking_lot::RwLock;
 use clap::{Parser, ValueEnum};
 
