@@ -28,8 +28,10 @@ sysinfo = "0.29"
 btrfs = { path = "../rust-btrfs" }
 rustc-hash = "1.1"
 hashbrown = { version = "0.14", default-features = false, features = ["inline-more", "allocator-api2"] }
-atty = "0.2"
 zstd = "0.13"
+
+[dev-dependencies]
+clap_complete = "4"
 
 # [dependencies.maligned]
 # version = "0.2"

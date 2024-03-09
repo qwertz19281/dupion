@@ -1,5 +1,5 @@
 use super::*;
-use std::{sync::atomic::Ordering, fs::{Metadata, File}};
+use std::{collections::VecDeque, fs::{Metadata, File}, sync::atomic::Ordering};
 use util::{DISP_PROCESSED_BYTES, DISP_PROCESSED_FILES};
 use ::btrfs::{DedupeRange, DedupeRangeDestInfo, DedupeRangeStatus, deduplicate_range};
 use std::os::unix::io::FromRawFd;
@@ -9,7 +9,7 @@ use fd::FileDescriptor;
 pub struct BtrfsDedup;
 
 impl Deduper for BtrfsDedup {
-    fn dedup_groups(&mut self, mut groups: Vec<DedupGroup>, state: &'static RwLock<State>, opts: &'static Opts) -> AnyhowResult<()> {
+    fn dedup_groups(&mut self, groups: Vec<DedupGroup>, state: &'static RwLock<State>, opts: &'static Opts) -> AnyhowResult<()> {
         // The dedups are split in batches to fit the os cache for readahead
         // the available file cache is estimated by the unused os memory
         // all files in batch will be opened 
@@ -18,100 +18,109 @@ impl Deduper for BtrfsDedup {
 
         let max_dups_per_group = 127; // TODO determine amount of files we can open currently
 
-        let mut gi = 0;
+        let allow_range_split = false;
 
         let mut cache_info = CacheUsable::new(file_split_round*2 .. opts.dedup_budget);
 
+        let mut cache_max = cache_info.get(); //only refresh after actual submit
+
         let mut s = state.write();
 
-        while gi < groups.len() {
-            if groups[gi].dups.is_empty() {
-                gi += 1;
-                continue;
-            }
+        let mut submit_buf = Vec::<(DedupGroup,bool)>::new();
 
-            let cache_max = cache_info.get();
+        let mut groups = VecDeque::from(groups);
 
-            // 1. Try to fit as much of groups as possible into batch, without splitting group files or range
-            {
-                let mut current_batch: Vec<(&DedupGroup,bool)> = Vec::new();
+        while !groups.is_empty() || !submit_buf.is_empty() {
+            // This inner "loop" is kinda like a checklist, if we have to change something on the bufs, we "start over" with continue; or break if we're good
+            while !groups.is_empty() || !submit_buf.is_empty() {
+                // Current submit usage
+                let mut submit_sum = 0;
+                let mut submit_usage = 0;
+                
+                for (f,_) in &submit_buf {
+                    submit_usage += f.usage();
+                    submit_sum += f.sum();
+                }
 
-                let mut used_in_batch = 0;
-                let mut to_open_files = 0;
-
-                while gi < groups.len() && used_in_batch + groups[gi].usage() <= cache_max && groups[gi].sum() + to_open_files <= (max_dups_per_group as u64 + 1) {
-                    used_in_batch += groups[gi].usage();
-                    to_open_files += groups[gi].sum();
-                    current_batch.push((&groups[gi],true));
-                    gi += 1;
-                    while gi < groups.len() && groups[gi].dups.is_empty() {
-                        gi += 1;
+                // Populate from input
+                if let Some(g) = groups.front() {
+                    // No empty groups
+                    if g.dups.is_empty() {
+                        groups.pop_front();
+                        continue;
+                    }
+                    // We always need one on the submit buf
+                    if submit_buf.is_empty() {
+                        submit_buf.push((groups.pop_front().unwrap(),true));
+                        continue;
+                    }
+                    // Fit more in if we can
+                    if submit_sum + g.sum() <= max_dups_per_group && submit_usage + g.usage() <= cache_max {
+                        submit_buf.push((groups.pop_front().unwrap(),true));
+                        continue;
                     }
                 }
 
-                // did we do it? submit, else continue
-                if !current_batch.is_empty() {
-                    dedup_group_batch(&current_batch, &mut s, opts, used_in_batch)?;
-                    current_batch.clear();
+                // If all fits, we can submit now
+                if submit_sum <= max_dups_per_group && submit_usage <= cache_max {
+                    break;
+                }
+
+                if submit_buf.is_empty() {
+                    break;
+                }
+                assert!(submit_buf.len() == 1);
+
+                // If too many files, split end and put back
+                let max_group_files = (cache_max / submit_buf[0].0.range_len()).min(max_dups_per_group).max(2);
+                if max_group_files < submit_sum {
+                    let end = submit_buf[0].0.split_off_end_at_candidate_n(max_group_files as usize - 1);
+                    groups.push_front(end);
                     continue;
                 }
 
-                if gi >= groups.len() {
-                    break;
-                }
-            }
+                assert!(max_group_files == 2 && submit_buf[0].0.sum() == 2);
 
-            // 2. If the group has too many files in it
-            if groups[gi].dups.len() > max_dups_per_group {
-                let first_half = groups[gi].split_off_start_at_candidate_n(max_dups_per_group);
-                dedup_group_batch(&[(&first_half,true)], &mut s, opts, first_half.usage())?;
-                continue;
-            }
+                // Now we have to range-split that single dedup. This will only be done on a single group with only two files
+                if allow_range_split {
+                    let mut g = submit_buf.remove(0).0;
 
-            // 3. Try to split a dedup group by file to fit in
-            {
-                let group = &mut groups[gi];
-                assert!(group.usage() > cache_max);
-
-                // the n of dup files that would fit into cache
-                let max_group_files = cache_max / group.range_len();
-
-                if max_group_files >= 2 {
-                    assert!(max_group_files <= group.sum());
-                    assert!(!group.dups.is_empty());
-                    // We can split
-                    let first_half = group.split_off_start_at_candidate_n(max_group_files as usize - 1);
-                    dedup_group_batch(&[(&first_half,true)], &mut s, opts, first_half.usage())?;
-                } else {
-                    // 4. Try to split in dedup range dimension, currently very aggressively only on one dup
-                    assert!(!group.dups.is_empty());
-
-                    let mut group = group.split_off_start_at_candidate_n(1);
-                    assert!(group.usage() > cache_max);
-
-                    let max_range_size = cache_max / group.sum(); // group.sum == 2 at this point
+                    let max_range_size = cache_max / g.sum(); // group.sum == 2 at this point
                     let max_range_size = max_range_size/file_split_round*file_split_round;
-                    let max_range_size = max_range_size.min(group.range_len());
-                    assert!(max_range_size*group.sum() <= cache_max);
-                    assert!(max_range_size*group.sum() < group.usage());
+                    let max_range_size = max_range_size.min(g.range_len());
+                    assert!(max_range_size*g.sum() <= cache_max);
+                    assert!(max_range_size*g.sum() < g.usage());
                     let max_range_size = max_range_size.max(file_split_round);
 
-                    while !group.range.is_empty() {
-                        let first_half = group.split_off_start_range(max_range_size);
+                    while !g.range.is_empty() {
+                        let first_half = g.split_off_start_range(max_range_size);
 
-                        let is_last_part = group.range.is_empty();
+                        let first_half_usage = first_half.usage();
+                        let is_last_part = g.range.is_empty();
 
-                        dedup_group_batch(&[(&first_half,is_last_part)], &mut s, opts, first_half.usage())?;
+                        dedup_group_batch(&[(first_half,is_last_part)], &mut s, opts, first_half_usage)?;
                     }
+
+                    break;
                 }
+
+                // We couldn't do anything, so let's just commit the single thing
+                break;
             }
+
+            if !submit_buf.is_empty() {
+                dedup_group_batch(&*submit_buf, &mut s, opts, submit_buf.iter().map(|v| v.0.usage()).sum())?;
+                submit_buf.clear();
+            }
+
+            cache_max = cache_info.get();
         }
         
         Ok(())
     }
 }
 
-pub fn dedup_group_batch(current: &[(&DedupGroup,bool)], state: &mut State, opts: &'static Opts, batch_size: u64) -> AnyhowResult<()> {
+pub fn dedup_group_batch(current: &[(DedupGroup,bool)], state: &mut State, opts: &'static Opts, batch_size: u64) -> AnyhowResult<()> {
     let real = !opts.dedup_simulate;
 
     if opts.verbose {
@@ -126,7 +135,7 @@ pub fn dedup_group_batch(current: &[(&DedupGroup,bool)], state: &mut State, opts
     }
 
     if opts.dedup_simulate {
-        for &(group,last_part) in current {
+        for (group,last_part) in current {
             if group.dups.is_empty() {
                 continue;
             }
@@ -142,7 +151,7 @@ pub fn dedup_group_batch(current: &[(&DedupGroup,bool)], state: &mut State, opts
             }
 
             DISP_PROCESSED_BYTES.fetch_add(group.dups.len() as u64 * (group.range.end - group.range.start),Ordering::Relaxed);
-            if last_part {
+            if *last_part {
                 DISP_PROCESSED_FILES.fetch_add(group.dups.len() as u64,Ordering::Relaxed);
             }
         }
@@ -183,7 +192,7 @@ pub fn dedup_group_batch(current: &[(&DedupGroup,bool)], state: &mut State, opts
     };
 
     // open all the relevant files
-    'g: for &(group,last_part) in current {
+    'g: for (group,last_part) in current {
         if group.dups.is_empty() {
             continue;
         }
@@ -221,7 +230,7 @@ pub fn dedup_group_batch(current: &[(&DedupGroup,bool)], state: &mut State, opts
 
         batch_file_sum += group.dups.len()+1;
 
-        opened.push((group,senpai_fd,dups_fd,last_part));
+        opened.push((group,senpai_fd,dups_fd,*last_part));
     }
 
     let mut readahead: Vec<(u64,&FileDescriptor,&Range<u64>)> = Vec::with_capacity(batch_file_sum);
@@ -360,4 +369,3 @@ pub fn fd_metadata(fd: i32) -> std::io::Result<Metadata> {
     std::mem::forget(file);
     meta
 }
-
