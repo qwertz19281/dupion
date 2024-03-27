@@ -27,6 +27,8 @@ pub struct Opts {
     pub aggressive_dedup: bool,
     pub dedup_simulate: bool,
     pub fiemap: usize,
+    pub skip_no_phys: bool,
+    pub euid: u32,
 }
 
 impl Opts {

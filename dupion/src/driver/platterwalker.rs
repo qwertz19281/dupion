@@ -154,11 +154,12 @@ impl Driver for PlatterWalker {
     }
 }
 
-pub fn size_file(path: &Path, meta: &Metadata, phy_off: u64, n_extends: usize, dest: &mut Vec<(u64,VfsId)>, hash_now: &mut Vec<VfsId>, s: &mut State, opts: &Opts) -> AnyhowResult<()> {
+pub fn size_file(path: &Path, meta: &Metadata, phy_off: u64, n_extents: usize, dest: &mut Vec<(u64,VfsId)>, hash_now: &mut Vec<VfsId>, s: &mut State, opts: &Opts) -> AnyhowResult<()> {
     let size = meta.len();
     let ctime = meta.ctime();
+    let uid = meta.uid();
 
-    let id = common::size_file(path, size, ctime, Some(phy_off), Some(n_extends), s, opts);
+    let id = common::size_file(path, size, ctime, uid, Some(phy_off), Some(n_extents), s, opts);
 
     dest.push((phy_off,id));
     hash_now.push(id);

@@ -10,6 +10,8 @@ fn main() {
 
     let o = OptInput::parse();
 
+    let euid = unsafe {libc::geteuid()};
+
     let opts = Box::leak(Box::new(Opts{
         paths: o.dirs.clone(),
         cache_path: o.cache_path.clone(),
@@ -32,6 +34,8 @@ fn main() {
         aggressive_dedup: false,
         dedup_simulate: o.dedup_simulate,
         fiemap: o.fiemap,
+        skip_no_phys: o.phys_only && o.fiemap != 0,
+        euid,
     }));
 
     if opts.paths.is_empty() {
@@ -39,6 +43,11 @@ fn main() {
     }
     if opts.threads == 0 {
         opts.threads = get_threads();
+    }
+
+    // dedup engine requires phys
+    if opts.fiemap == 0 && matches!(o.dedup,Some(DedupMode::Btrfs)) {
+        opts.fiemap = 1;
     }
 
     opts.validate().unwrap();
@@ -160,18 +169,18 @@ pub fn get_threads() -> usize {
 #[derive(Parser)]
 #[clap(version, about)]
 pub struct OptInput {
-    /// Results output mode (g/t/d/-), what type of result should be printed
-    /// groups: duplicate entries in sorted size groups
-    /// tree: json as tree
-    /// diff: like tree, but exact dir comparision, reveals diffs and supersets
+    /// Results output mode (g/t/d/-), what type of result should be printed  
+    /// groups: duplicate entries in sorted size groups  
+    /// tree: json as tree  
+    /// diff: like tree, but exact dir comparision, reveals diffs and supersets  
     /// -: disabled
     #[arg(short, long, default_value = "g", verbatim_doc_comment)]
     pub output: OutputMode,
 
-    /// Set how files/directory should be hidden/omitted (shadowed are e.g. childs of duplicate dirs) (0-3)
-    /// 0: show ALL, including pure shadowed groups
-    /// 1: show all except pure shadowed groups
-    /// 2: show shadowed only if there is also one non-shadowed in the group
+    /// Set how files/directory should be hidden/omitted (shadowed are e.g. childs of duplicate dirs) (0-3)  
+    /// 0: show ALL, including pure shadowed groups  
+    /// 1: show all except pure shadowed groups  
+    /// 2: show shadowed only if there is also one non-shadowed in the group  
     /// 3: never show shadowed
     #[arg(short, long, default_value_t = 2, verbatim_doc_comment)]
     pub shadow_rule: u8,
@@ -180,23 +189,25 @@ pub struct OptInput {
     #[arg(long)]
     pub absolute: bool,
 
-    /// File lower size limit for scanning in bytes (supports IEC prefix)
-    #[arg(long, default_value = "0")]
+    /// File lower size limit for scanning in bytes (supports IEC prefix)  
+    /// Note that skipping (hashing of) files will affect finding of duplicate files and folders, as a folder can only be hashed if all contained children were hashed
+    #[arg(long, default_value = "0", verbatim_doc_comment)]
     pub min_size: String,
-    /// File upper size limit for scanning in bytes (supports IEC prefix)
-    #[arg(long, default_value = "")]
+    /// File upper size limit for scanning in bytes (supports IEC prefix)  
+    /// Note that skipping (hashing of) files will affect finding of duplicate files and folders, as a folder can only be hashed if all contained children were hashed
+    #[arg(long, default_value = "", verbatim_doc_comment)]
     pub max_size: String,
 
-    /// Also search inside archives. requires to scan and hash every archive
+    /// Also search inside archives. requires to scan and hash every archive  
+    /// Not supported yet with new uring engine
     #[arg(short='a', long)]
     pub read_archives: bool, //TODO: build mode w/o archive support
 
-    /// Deduplication mode (-/btrfs). Disabled by default
-    /// 
+    /// Deduplication mode (-/btrfs). Disabled by default  
     /// btrfs: Use ioctl_file_dedupe_range on supported filesystems
     #[arg(long, verbatim_doc_comment)]
     pub dedup: Option<DedupMode>,
-    /// EXPERIMENTAL Dedup even if first extent match. Currently this would dedup everything, even if already deduped
+    /// EXPERIMENTAL Dedup even if first extent match. Currently this would dedup everything, even if already deduped. N/A with uring engine
     #[arg(long)]
     pub aggressive_dedup: bool,
     /// Simulate if dedup enabled
@@ -226,9 +237,13 @@ pub struct OptInput {
     /// EXPERIMENTAL Dedup budget in MiB
     #[arg(long, default_value_t = 512)]
     pub dedup_budget: u64,
-    /// EXPERIMENTAL Control FIEMAP mode. 0 = disable, 1 = enable, >1 = enable and filter out files with inline content and >n fragments, useful for dedup-only use (e.g. 1024)
-    #[arg(long, default_value_t = 1)]
+    /// EXPERIMENTAL Control FIEMAP mode. 0 = disable, >1 = enable and set FIEMAP-hash limit
+    #[arg(long, default_value_t = 1024)]
     pub fiemap: usize,
+    /// EXPERIMENTAL Skip hashing of files without a physical location (File too small or too many fragments)  
+    /// Should only be used in dedup-only use, as finding of duplicate files/folders is severely impacted
+    #[arg(long, verbatim_doc_comment)]
+    pub phys_only: bool,
     /// Threaded archive read cache limit in MiB
     #[arg(long, default_value_t = 1024)]
     pub archive_cache_mem: usize,
@@ -244,7 +259,8 @@ pub struct OptInput {
     /// EXPERIMENTAL Prefetch directory metadata, eventually fails on non-root
     #[arg(long)]
     pub dir_prefetch: bool,
-    /// EXPERIMENTAL Don't scan for files, use found files from cache instead
+    /// EXPERIMENTAL Don't scan for files, use found files from cache instead  
+    /// Should not be set if the cache previously only ran with --phys-only (except for dedup-only use)
     #[arg(long)]
     pub no_scan: bool,
 

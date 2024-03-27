@@ -29,10 +29,11 @@ pub struct VfsEntry {
     pub treediff_stat: u8,
     pub dedup_state: Option<bool>,
     pub phys: Option<u64>,
-    pub n_extends: Option<usize>,
+    pub n_extents: Option<usize>,
+    pub uid: Option<u32>,
 }
 
-const _: () = assert!(std::mem::size_of::<VfsEntry>() == 216);
+const _: () = assert!(std::mem::size_of::<VfsEntry>() == 224);
 
 impl VfsEntry {
     pub fn new(path: Arc<Path>, plc: Arc<OsStr>) -> Self {
@@ -59,7 +60,8 @@ impl VfsEntry {
             treediff_stat: 0,
             dedup_state: None,
             phys: Some(0),
-            n_extends: None,
+            n_extents: None,
+            uid: None,
         }
     }
 
@@ -192,7 +194,7 @@ impl State {
             s.dir_hash = None;
             s.dedup_state = None;
             s.phys = Some(0);
-            s.n_extends = None;
+            s.n_extents = None;
             s.ctime = Some(ctime);
             s.valid = true;
             false

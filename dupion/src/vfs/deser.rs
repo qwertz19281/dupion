@@ -95,8 +95,9 @@ impl<'a> EntryIntermediateMsgPack<'a> {
             failure: self.upgrade,
             treediff_stat: 0,
             dedup_state: self.dedup_state,
-            phys: None,
-            n_extends: None,
+            phys: None,//,
+            n_extents: None,
+            uid: None,
         })
     }
 }
@@ -128,7 +129,8 @@ impl<'a> EntryIntermediateJson<'a> {
             treediff_stat: 0,
             dedup_state: self.dedup_state,
             phys: None,
-            n_extends: None,
+            n_extents: None,
+            uid: None,
         })
     }
 }

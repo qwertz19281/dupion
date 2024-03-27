@@ -35,14 +35,14 @@ pub trait Deduper {
                         && s.tree[id].phys.is_some()
                         && s.tree[id].phys != Some(0)
                         && s.tree[id].valid
-                        && s.tree[id].n_extends.is_some()
+                        && s.tree[id].n_extents.is_some()
                     )
                     .map(|&(_,id)| DedupCandidate {
                         id,
                         phys: s.tree[id].phys.unwrap(),
                         phys_occurrences: 0,
                         file_size: s.tree[id].file_size.unwrap(),
-                        n_extends: s.tree[id].n_extends.unwrap(),
+                        n_extends: s.tree[id].n_extents.unwrap(),
                         ctime: s.tree[id].ctime.unwrap()
                     })
             );

@@ -99,14 +99,14 @@ fn find_files(ringer: &Uringer, state: &'static RwLock<State>, opts: &'static Op
     let entries = entries.as_mut().unwrap();
 
     std::thread::scope(|s| {
-        let (send,recv) = crossbeam_channel::bounded::<(usize,PathBuf,u64,StatxTimestamp)>(max_files*2);
+        let (send,recv) = crossbeam_channel::bounded::<(usize,PathBuf,u64,StatxTimestamp,u32)>(max_files*2);
         let send = &send;
 
         s.spawn(move || {
-            while let Ok((idx,path,size,ctime)) = recv.recv() {
+            while let Ok((idx,path,size,ctime,uid)) = recv.recv() {
                 let id = common::size_file(
                     &path,
-                    size, ctime.tv_sec,
+                    size, ctime.tv_sec, uid,
                     None, None,
                     state, opts
                 );
@@ -140,7 +140,7 @@ fn find_files(ringer: &Uringer, state: &'static RwLock<State>, opts: &'static Op
                         if let Some(statx) = soft_error!(statx,"\tError: {}",) {
                             let idx = ins_idx.get();
                             ins_idx.set(idx+1);
-                            Some((idx,path,statx.stx_size,statx.stx_ctime))
+                            Some((idx,path,statx.stx_size,statx.stx_ctime,statx.stx_uid))
                         } else {
                             None
                         }
@@ -311,7 +311,12 @@ const SMALL_FILE_ATTACHBUF: u64 = 16384;
 fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a Cell<u64>, state: &'a RefCell<&mut State>, opts: &'static Opts) -> Option<glommio::ScopedTask<'a,bool>> {
     if f.open.borrow().is_none() && f.error.borrow().is_none() {
         let fut = async move {
-            match glommio::io::OpenOptions::new().read(true).custom_flags(libc::O_NOATIME).buffered_open(&*f.path).await {
+            let mut open_flags = 0;
+            if Some(opts.euid) == state.borrow().tree[f.id].uid {
+                open_flags |= libc::O_NOATIME;
+            }
+            
+            match glommio::io::OpenOptions::new().read(true).custom_flags(open_flags).buffered_open(&*f.path).await {
                 Ok(v) => {
                     let ord = ordion.get();
                     f.ordion.set(ord);
@@ -340,13 +345,13 @@ fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a 
                     let mut cancel_read = false;
                     
                     if opts.fiemap != 0 {
-                        let fiemap = read_fiemap(&v, true, true, true, if opts.fiemap > 1 {opts.fiemap} else {usize::MAX});
+                        let fiemap = read_fiemap(&v, true, true, true, opts.fiemap);
 
                         match fiemap {
                             Ok(Some(fm)) => {
                                 *f.fiemap.borrow_mut() = Some(fm.clone());
                                 entry.phys = Some(fm.phys);
-                                entry.n_extends = Some(fm.n_extents);
+                                entry.n_extents = Some(fm.n_extents);
                                 if let Some(h) = fm.fiemap_hash.clone() {
                                     if let Some(h) = s.fiemap2hash.get(&(new_size,h)).cloned() {
                                         //dprintln!("FIEMAP SKIP EVENT {:?}",&fm);
@@ -357,8 +362,8 @@ fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a 
                                     }
                                 }
                             },
-                            Ok(None) => if opts.fiemap > 1 {cancel_read = true;}
-                            Err(ReadFiemapError::ExtentLimitExceeded) => cancel_read = true,
+                            Ok(None) | Err(ReadFiemapError::ExtentLimitExceeded) =>
+                                if opts.skip_no_phys {cancel_read = true;},
                             Err(e) => dprintln!("\tError reading FIEMAP of {}: {}",opts.path_disp(&f.path),e),
                         }
                     }

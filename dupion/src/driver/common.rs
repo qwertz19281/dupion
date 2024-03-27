@@ -6,7 +6,7 @@ use crate::state::State;
 use crate::util::{DISP_FOUND_BYTES, DISP_FOUND_FILES};
 use crate::vfs::VfsId;
 
-pub fn size_file(path: &Path, size: u64, ctime: i64, phy_off: Option<u64>, n_extends: Option<usize>, s: &mut State, opts: &Opts) -> VfsId {
+pub fn size_file(path: &Path, size: u64, ctime: i64, uid: u32, phy_off: Option<u64>, n_extents: Option<usize>, s: &mut State, opts: &Opts) -> VfsId {
     opts.log_verbosed("SIZE", path);
 
     DISP_FOUND_BYTES.fetch_add(size,Ordering::Relaxed);
@@ -19,8 +19,9 @@ pub fn size_file(path: &Path, size: u64, ctime: i64, phy_off: Option<u64>, n_ext
     e.is_file = true;
     
     e.file_size = Some(size);
+    e.uid = Some(uid);
     e.phys = phy_off;
-    e.n_extends = n_extends;
+    e.n_extents = n_extents;
     
     s.push_to_size_group(id,true,false).unwrap();
     if s.tree[id].file_hash.is_some() {

@@ -131,7 +131,8 @@ impl Vfs {
             treediff_stat: 0,
             dedup_state: None,
             phys: Some(0),
-            n_extends: None,
+            n_extents: None,
+            uid: None,
         });
         senf
     }

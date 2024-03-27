@@ -163,10 +163,16 @@ pub fn dedup_group_batch(current: &[(DedupGroup,bool)], state: &mut State, opts:
     let mut batch_file_sum = 0;
 
     let open_dup = |group: &DedupGroup,id: VfsId| {
+        let mut open_flags = libc::O_RDONLY;
+        if Some(opts.euid) == state.tree[id].uid {
+            open_flags |= libc::O_NOATIME;
+        }
+
         let path = &state.tree[id].path;
+
         let fd = match FileDescriptor::open(
             path,
-            libc::O_RDONLY | libc::O_NOATIME,
+            open_flags,
         ) {
             Ok(v) => v,
             Err(e) => {
