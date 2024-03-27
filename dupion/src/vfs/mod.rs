@@ -1,6 +1,6 @@
 use super::*;
 use entry::VfsEntry;
-use std::{ops::{IndexMut, Index, Deref}, path::{PathBuf, Path, Component}, sync::Arc, ffi::{OsStr, OsString}};
+use std::{ffi::{OsStr, OsString}, ops::{Deref, Index, IndexMut}, path::{Component, Path, PathBuf}, rc::Rc, sync::Arc};
 
 pub mod entry;
 pub mod deser;
@@ -39,10 +39,12 @@ impl Vfs {
                     id = i;
                 },
                 None => {
-                    let e = VfsEntry::new(current_build.clone().into());
+                    let plc = to_plc(&current_build);
+                    let e = VfsEntry::new(current_build.clone().into(), plc.clone());
                     let new = self._insert_new_entry(e);
                     self[id].is_dir = true;
                     self[id].childs.push(new);
+                    assert!(self[id].childs2.insert(plc,new).is_none());
                     id = new;
                 }
             }
@@ -87,12 +89,15 @@ impl Vfs {
 
         let entry = &self[id];
         //is_absolute(&entry.path);
-        for &cid in &entry.childs {
-            let plc = &self[cid].plc;
-            debug_assert_eq!(plc,&to_plc(&self[cid].path));
-            if plc == c.as_os_str() {
-                return Some(cid);
-            }
+        // for &cid in &entry.childs {
+        //     let plc = &self[cid].plc;
+        //     debug_assert_eq!(plc,&to_plc(&self[cid].path));
+        //     if &**plc == c.as_os_str() {
+        //         return Some(cid);
+        //     }
+        // }
+        if let Some(cid) = entry.childs2.get(c.as_os_str()) {
+            return Some(*cid);
         }
         None
     }
@@ -105,13 +110,14 @@ impl Vfs {
         };
         senf.entries.push(VfsEntry{
             path: static_empty_arc_path,
-            plc: OsString::with_capacity(0),
+            plc: OsString::with_capacity(0).into(),
             ctime: None,
             file_size: None,
             dir_size: None,
             file_hash: None,
             dir_hash: None,
             childs: Vec::new(),
+            childs2: Default::default(),
             valid: false,
             is_file: false,
             is_dir: false,
@@ -192,12 +198,11 @@ impl<P> Deref for AbsPath<P> where P: AsRef<Path> {
     }
 }
 
-pub fn to_plc(p: &Path) -> OsString {
+pub fn to_plc(p: &Path) -> Arc<OsStr> {
     let mut s = p.components()
         .last()
         .map(|c| c.as_os_str() )
         .unwrap_or(OsStr::new(""))
         .to_owned();
-    s.shrink_to_fit();
-    s
+    s.into()
 }

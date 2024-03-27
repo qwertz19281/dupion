@@ -1,6 +1,6 @@
 [package]
 name = "dupion"
-version = "0.4.0"
+version = "0.5.0"
 description = "Find duplicate files and folders"
 authors = ["qwertz19281 <dellen903@gmail.com>"]
 edition = "2021"
@@ -24,12 +24,17 @@ serde_derive = "1.0"
 base64 = "0.21"
 libc = ">=0.2.70"
 parking_lot = "0.12"
-num_cpus = "1.13"
 sysinfo = "0.29"
 btrfs = { path = "../rust-btrfs" }
 rustc-hash = "1.1"
 hashbrown = { version = "0.14", default-features = false, features = ["inline-more", "allocator-api2"] }
 zstd = "0.13"
+walkdir = "2.5"
+glommio = { path = "../../glommio/glommio" }
+crossbeam-channel = "0.5"
+fiemap = { path = "../../fiemap-rs/fiemap" }
+thiserror = "1"
+hex = "0.4"
 
 [dev-dependencies]
 clap_complete = "4"

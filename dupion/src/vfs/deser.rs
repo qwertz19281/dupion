@@ -81,6 +81,7 @@ impl<'a> EntryIntermediateMsgPack<'a> {
             dir_size: None,
             file_hash: self.file_hash.and_then(|h| intern_hash_raw(&h, interner).transpose() ).transpose()?,
             dir_hash: None,
+            childs2: rustc_hash::FxHashMap::with_capacity_and_hasher(self.childs.len(), Default::default()),
             childs: self.childs,
             valid: false,
             is_file: false,
@@ -112,6 +113,7 @@ impl<'a> EntryIntermediateJson<'a> {
             dir_size: None,
             file_hash: self.file_hash.and_then(|h| decode_and_intern_hash_base64(&h, interner).transpose() ).transpose()?,
             dir_hash: None,
+            childs2: rustc_hash::FxHashMap::with_capacity_and_hasher(self.childs.len(), Default::default()),
             childs: self.childs,
             valid: false,
             is_file: false,
@@ -268,6 +270,17 @@ impl State {
                     let VfsEntriesJson(entries) = serde_json::from_reader(buf_reader)?;
                     self.tree.entries = entries;
                 }
+
+                for i in 0 .. self.tree.entries.len() {
+                    let i = VfsId { evil_inner: i };
+                    if self.tree[i].childs2.is_empty() && !self.tree[i].childs.is_empty() {
+                        for j in 0 .. self.tree[i].childs.len() {
+                            let id = self.tree[i].childs[j];
+                            let plc = self.tree[id].plc.clone();
+                            self.tree[i].childs2.insert(plc, id);
+                        }
+                    }
+                }
             }
         }
         Ok(())
@@ -283,10 +296,6 @@ const BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPur
         .with_decode_allow_trailing_bits(true)
         .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent)
 );
-
-pub fn encode_hash_base64(h: &Hash) -> String {
-    BASE64_ENGINE.encode(&h[..])
-}
 
 type InternSet = hashbrown::HashSet<Hash,BuildHasherDefault<FxHasher>>;
 

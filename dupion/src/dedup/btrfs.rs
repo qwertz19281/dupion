@@ -16,7 +16,7 @@ impl Deduper for BtrfsDedup {
 
         let file_split_round = 1024*1024*12;
 
-        let max_dups_per_group = 127; // TODO determine amount of files we can open currently
+        let max_dups_per_group = opts.limit_open_files(0, 4, 127) as u64;
 
         let allow_range_split = false;
 
@@ -166,7 +166,7 @@ pub fn dedup_group_batch(current: &[(DedupGroup,bool)], state: &mut State, opts:
         let path = &state.tree[id].path;
         let fd = match FileDescriptor::open(
             path,
-            libc::O_RDONLY,
+            libc::O_RDONLY | libc::O_NOATIME,
         ) {
             Ok(v) => v,
             Err(e) => {

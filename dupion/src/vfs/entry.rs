@@ -8,13 +8,14 @@ use state::State;
 #[derive(Clone)]
 pub struct VfsEntry {
     pub path: Arc<Path>,
-    pub plc: OsString,
+    pub plc: Arc<OsStr>,
     pub ctime: Option<i64>,
     pub file_size: Option<Size>,
     pub dir_size: Option<Size>,
     pub file_hash: Option<Hash>,
     pub dir_hash: Option<Hash>,
     pub childs: Vec<VfsId>,
+    pub childs2: rustc_hash::FxHashMap<Arc<OsStr>,VfsId>,
     pub valid: bool,
     pub is_file: bool,
     pub is_dir: bool,
@@ -31,12 +32,12 @@ pub struct VfsEntry {
     pub n_extends: Option<usize>,
 }
 
-const _: () = assert!(std::mem::size_of::<VfsEntry>() == 192);
+const _: () = assert!(std::mem::size_of::<VfsEntry>() == 216);
 
 impl VfsEntry {
-    pub fn new(path: Arc<Path>) -> Self {
+    pub fn new(path: Arc<Path>, plc: Arc<OsStr>) -> Self {
         Self{
-            plc: to_plc(&path),
+            plc,
             path,
             ctime: None,
             file_size: None,
@@ -44,6 +45,7 @@ impl VfsEntry {
             file_hash: None,
             dir_hash: None,
             childs: Vec::new(),
+            childs2: Default::default(),
             valid: false,
             is_file: false,
             is_dir: false,

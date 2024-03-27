@@ -1,4 +1,7 @@
+use self::util::get_rlimit;
+
 use super::*;
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use vfs::is_absolute;
 
@@ -11,6 +14,7 @@ pub struct Opts {
     pub read_buffer: usize,
     pub cache_dropbehind: bool,
     pub prefetch_budget: u64,
+    pub max_open_files: u64,
     pub dedup_budget: u64,
     //pub huge_zip_thres: u64,
     pub threads: usize,
@@ -22,6 +26,7 @@ pub struct Opts {
     pub scan_size_max: u64,
     pub aggressive_dedup: bool,
     pub dedup_simulate: bool,
+    pub fiemap: usize,
 }
 
 impl Opts {
@@ -41,11 +46,11 @@ impl Opts {
             dprintln!("\t{} {}",prefix,s);
         }
     }
-    pub fn path_disp<'a>(&self, path: &'a Path) -> &'a str {
+    pub fn path_disp<'a>(&self, path: &'a Path) -> Cow<'a,str> {
         if !self.force_absolute_paths && self.paths.len() == 1 {
-            path.strip_prefix(&self.paths[0]).unwrap_or(path).to_str().unwrap()
+            path.strip_prefix(&self.paths[0]).unwrap_or(path).to_string_lossy()
         }else{
-            path.to_str().unwrap()
+            path.to_string_lossy()
         }
     }
 
@@ -59,5 +64,10 @@ impl Opts {
         s.ends_with(".tar.gz") ||
         s.ends_with(".tar.xz") ||
         false
+    }
+
+    pub(crate) fn limit_open_files(&self, sub: usize, min: usize, max: usize) -> usize {
+        let (cur,_) = get_rlimit();
+        (cur as usize).saturating_sub(16).saturating_sub(sub).clamp(min, max)
     }
 }

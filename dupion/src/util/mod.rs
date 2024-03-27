@@ -1,7 +1,7 @@
 use super::*;
-use std::{sync::Arc, ops::Range};
+use std::{sync::{Arc, atomic::{AtomicU64, AtomicBool, AtomicUsize, Ordering}}, ops::Range};
 use group::{SizeGroup, HashGroup};
-use std::{io::{Seek, Read}, sync::{atomic::{Ordering, AtomicUsize, AtomicBool, AtomicU64}}, time::Duration, ops::{DerefMut, Deref}};
+use std::{io::{Seek, Read}, time::Duration, ops::{DerefMut, Deref}};
 use parking_lot::RawMutex;
 use parking_lot::lock_api::RawMutex as _;
 use sysinfo::*;
@@ -180,6 +180,21 @@ impl CacheUsable {
         let sys_available = self.sys.total_memory() - self.sys.used_memory();
         let for_caching = (sys_available/2+1024)/65536*65536;
         for_caching.clamp(self.range.start,self.range.end)
+    }
+}
+
+pub(crate) fn get_rlimit() -> (u64,u64) {
+    unsafe {
+        let mut limits = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut limits) != 0 {
+            // Most Linux systems now default to 1024.
+            (1024,1024)
+        } else {
+            (limits.rlim_cur,limits.rlim_max)
+        }
     }
 }
 

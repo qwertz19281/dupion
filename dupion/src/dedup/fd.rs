@@ -1,3 +1,4 @@
+use std::os::unix::ffi::OsStrExt;
 use std::{ffi::CString, io::ErrorKind, path::Path};
 
 pub struct FileDescriptor {
@@ -13,12 +14,7 @@ impl FileDescriptor {
 
         // TODO should be able to do this cleanly on linux...
 
-        let path_string = path
-            .to_str()
-            .ok_or("Invalid characters")?
-            .to_owned();
-
-        let path_c = CString::new(path_string.into_bytes())
+        let path_c = CString::new(path.as_os_str().as_bytes())
             .map_err(|_| "Invalid characters")?;
 
         let fd = cvt_r(|| unsafe { libc::open(path_c.as_ptr(), flags) })

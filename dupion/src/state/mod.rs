@@ -11,6 +11,7 @@ pub struct State {
     pub sizes: Sizes,
     pub hashes: Hashes,
     pub cache_allowed: bool,
+    pub fiemap2hash: rustc_hash::FxHashMap<(u64,Hash),Hash>,
 }
 
 impl State {
@@ -107,6 +108,9 @@ impl State {
         }
         //hash anyway if possible archive and not dir (happens if archive-scanning was disabled in previous cache)
         do_hash |= opts.zip_by_extension(&self.tree[id].path) && self.tree[id].is_file && !self.tree[id].is_dir;
+
+        //do_hash &= self.tree[id].phys.is_some_and(|v| v != 0);
+
         do_hash
     }
     pub fn more_than_one_hash(&self, hash: &Hash) -> bool {
@@ -133,6 +137,7 @@ impl State {
             tree: Vfs::new(),
             sizes: FxHashMap::with_capacity_and_hasher(16384, Default::default()),
             hashes: FxHashMap::with_capacity_and_hasher(16384, Default::default()),
+            fiemap2hash: FxHashMap::with_capacity_and_hasher(16384, Default::default()),
             cache_allowed,
         }
     }

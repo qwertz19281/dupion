@@ -100,8 +100,12 @@ impl Driver for PlatterWalker {
 
                 dest.sort_by_key(|(o,_)| *o );
 
+                // DISP_RELEVANT_FILES.store(0, Ordering::Relaxed);
+                // DISP_RELEVANT_BYTES.store(0, Ordering::Relaxed);
+
                 for (_,id) in &dest {
                     if s.is_file_read_candidate(*id,opts) {
+                        // s.tree[*id].disp_relevated = false;
                         s.tree[*id].disp_add_relevant();
                     }
                 }
@@ -143,7 +147,7 @@ impl Driver for PlatterWalker {
             }
         }
     }
-    fn new() -> Self {
+    fn new(_: &'static Opts) -> Self {
         Self{
             entries: None,
         }
@@ -154,31 +158,7 @@ pub fn size_file(path: &Path, meta: &Metadata, phy_off: u64, n_extends: usize, d
     let size = meta.len();
     let ctime = meta.ctime();
 
-    opts.log_verbosed("SIZE", path);
-
-    DISP_FOUND_BYTES.fetch_add(size,Ordering::Relaxed);
-    DISP_FOUND_FILES.fetch_add(1,Ordering::Relaxed);
-
-    let id = s.tree.cid_and_create(path);
-    s.validate(id,ctime,Some(size),None);
-
-    let e = &mut s.tree[id];
-    e.is_file = true;
-    
-    e.file_size = Some(size);
-    e.phys = Some(phy_off);
-    e.n_extends = Some(n_extends);
-    
-    s.push_to_size_group(id,true,false).unwrap();
-    if s.tree[id].file_hash.is_some() {
-        s.push_to_hash_group(id,true,false).unwrap();
-        //disp_processed_bytes.fetch_add(size as usize,Ordering::Relaxed);
-        //disp_processed_files.fetch_add(1,Ordering::Relaxed);
-    }
-
-    if s.is_file_read_candidate(id,opts) {
-        s.tree[id].disp_add_relevant();
-    }
+    let id = common::size_file(path, size, ctime, Some(phy_off), Some(n_extends), s, opts);
 
     dest.push((phy_off,id));
     hash_now.push(id);

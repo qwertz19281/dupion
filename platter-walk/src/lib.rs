@@ -91,6 +91,14 @@ pub struct ToScan<D> where D: Default {
 
 #[derive(PartialEq, Copy, Clone)]
 pub enum Order {
+    /// Return directory entries as they are encountered
+    /// Only directories are visited sequentially based on physical layout
+    /// This is most useful when file path and type are all the information that's needed
+    Dentries,
+    /// Return directory entries in batches sorted by inode.
+    /// Can be used speed up stat() calls based on the assumption that inode tables are
+    /// laid out by ID and thus sequential traversal will be faster.
+    Inode,
     /// Return directory entries sorted by physical offset of the file contents
     /// Can be used to get sequential reads over multiple files
     Content
@@ -384,7 +392,10 @@ impl<D> Iterator for ToScan<D> where D: Default {
                     }
 
                     match self.order {
-                        Order::Content => {
+                        Order::Dentries => {
+                            return Some(Ok(vec![(0,Entry::new(dent.path(), meta, dent.ino(), vec![], userdata))]))
+                        }
+                        Order::Inode | Order::Content => {
                             self.inode_ordered.push(Entry::new(dent.path(), meta, dent.ino(), vec![], userdata));
                         }
                     }
@@ -403,6 +414,11 @@ impl<D> Iterator for ToScan<D> where D: Default {
             assert!(self.inode_ordered.len() > 0);
 
             match self.order {
+                Order::Inode => {
+                    let dents = self.inode_ordered.drain(..).rev().map(|v| (0,v) ).collect();
+                    self.phase = Phase::DirWalk;
+                    return Some(Ok(dents))
+                },
                 Order::Content => {
                     for mut e in self.inode_ordered.drain(..).rev() {
                         let (meta,extents) = file_meta_and_extents(e.path());
@@ -447,7 +463,6 @@ impl<D> Iterator for ToScan<D> where D: Default {
 }
 
 pub fn file_meta_and_extents(path: impl AsRef<Path>) -> (Result<Metadata,String>,Result<Vec<FileExtent>,String>) {
-
     let fd = FileDescriptor::open(
 		&path,
 		libc::O_RDONLY,

@@ -1,9 +1,7 @@
-use dupion::{state::State, opts::Opts, driver::{Driver, platterwalker::PlatterWalker}, phase::Phase, process::{export, calculate_dir_hash, find_shadowed}, util::*, vfs::VfsId, zip::setlocale_hack, output::{tree::print_tree, groups::print_groups, treediff::print_treediff}, dedup::{Deduper, btrfs::BtrfsDedup}, print_statw, stat_section_start, stat_section_end};
+use dupion::{dedup::{btrfs::BtrfsDedup, Deduper}, driver::{platterwalker::PlatterWalker, uringer::Uringer, Driver}, opts::Opts, output::{groups::print_groups, tree::print_tree, treediff::print_treediff}, phase::Phase, print_statw, process::{calculate_dir_hash, export, find_shadowed}, stat_section_end, stat_section_start, state::State, util::*, vfs::VfsId, zip::setlocale_hack};
 use std::{io::{stderr, IsTerminal as _}, path::PathBuf, sync::atomic::Ordering, time::Duration};
 use parking_lot::RwLock;
 use clap::{Parser, ValueEnum};
-
-use dupion::dprintln;
 
 fn main() {
     setlocale_hack();
@@ -18,20 +16,22 @@ fn main() {
         verbose: o.verbose,
         shadow_rule: o.shadow_rule,
         force_absolute_paths: o.absolute,
-        read_buffer:       ((o.read_buffer * 1048576.0) as usize +1024)/4096*4096,
-        prefetch_budget: ((o.prefetch_budget * 1048576.0) as u64 +1024)/4096*4096,
-        dedup_budget: ((o.dedup_budget * 1048576.0) as u64 +1024)/4096*4096,
+        read_buffer: o.read_buffer*1024*1024,
+        max_open_files: o.max_open_files,
+        prefetch_budget: o.prefetch_budget*1024*1024,
+        dedup_budget: o.dedup_budget*1024*1024,
         cache_dropbehind: o.cache_dropbehind,
         pass_1_hash: o.pass_1_hash,
-        archive_cache_mem: ((o.archive_cache_mem * 1048576.0) as usize +1024)/4096*4096,
+        archive_cache_mem: o.archive_cache_mem*1024*1024,
         dir_prefetch: o.dir_prefetch,
         read_archives: o.read_archives,
         //huge_zip_thres: ((o.huge_zip_thres * 1048576.0) as usize +1024)/4096*4096,
         threads: o.threads,
-        scan_size_min: o.min_size,
-        scan_size_max: o.max_size,
-        aggressive_dedup: o.aggressive_dedup,
+        scan_size_min: if o.min_size.is_empty() {0} else {parse_str_prefix(&o.min_size)},
+        scan_size_max: if o.max_size.is_empty() {u64::MAX} else {parse_str_prefix(&o.max_size)},
+        aggressive_dedup: false,
         dedup_simulate: o.dedup_simulate,
+        fiemap: o.fiemap,
     }));
 
     if opts.paths.is_empty() {
@@ -90,7 +90,7 @@ fn main() {
 }
 
 pub fn scan(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
-    let mut d = PlatterWalker::new();
+    let mut d = Uringer::new(opts);
 
     eprintln!("\n#### Pass 1\n");
 
@@ -147,24 +147,13 @@ pub fn spawn_info_thread(o: &Opts) {
     }
 }
 
-
 pub fn get_threads() -> usize {
     match std::env::var("RAYON_NUM_THREADS")
         .ok()
         .and_then(|s| s.parse().ok())
     {
         Some(x) if x > 0 => return x,
-        Some(x) if x == 0 => return num_cpus::get(),
-        _ => {}
-    }
-
-    // Support for deprecated `RAYON_RS_NUM_CPUS`.
-    match std::env::var("RAYON_RS_NUM_CPUS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-    {
-        Some(x) if x > 0 => x,
-        _ => num_cpus::get(),
+        _ => return std::thread::available_parallelism().map(Into::into).unwrap_or(1),
     }
 }
 
@@ -191,12 +180,12 @@ pub struct OptInput {
     #[arg(long)]
     pub absolute: bool,
 
-    /// File lower size limit for scanning in bytes  
-    #[arg(long, default_value_t = 0)]
-    pub min_size: u64,
-    /// File upper size limit for scanning in bytes  
-    #[arg(long, default_value_t = u64::MAX)]
-    pub max_size: u64, //TODO parse K/M/G prefixes
+    /// File lower size limit for scanning in bytes (supports IEC prefix)
+    #[arg(long, default_value = "0")]
+    pub min_size: String,
+    /// File upper size limit for scanning in bytes (supports IEC prefix)
+    #[arg(long, default_value = "")]
+    pub max_size: String,
 
     /// Also search inside archives. requires to scan and hash every archive
     #[arg(short='a', long)]
@@ -226,17 +215,23 @@ pub struct OptInput {
     pub threads: usize,
 
     /// EXPERIMENTAL Read buffer in MiB
-    #[arg(long, default_value_t = 1.0)]
-    pub read_buffer: f64,
+    #[arg(long, default_value_t = 1)]
+    pub read_buffer: usize,
+    /// EXPERIMENTAL Max open files
+    #[arg(long, default_value_t = 256)]
+    pub max_open_files: u64,
     /// EXPERIMENTAL Prefetch budget in MiB
-    #[arg(long, default_value_t = 32.0)]
-    pub prefetch_budget: f64,
+    #[arg(long, default_value_t = 256)]
+    pub prefetch_budget: u64,
     /// EXPERIMENTAL Dedup budget in MiB
-    #[arg(long, default_value_t = 512.0)]
-    pub dedup_budget: f64,
+    #[arg(long, default_value_t = 512)]
+    pub dedup_budget: u64,
+    /// EXPERIMENTAL Control FIEMAP mode. 0 = disable, 1 = enable, >1 = enable and filter out files with inline content and >n fragments, useful for dedup-only use (e.g. 1024)
+    #[arg(long, default_value_t = 1)]
+    pub fiemap: usize,
     /// Threaded archive read cache limit in MiB
-    #[arg(long, default_value_t = 1024.0)]
-    pub archive_cache_mem: f64,
+    #[arg(long, default_value_t = 1024)]
+    pub archive_cache_mem: usize,
     /// Enable cache dropbehind to reduce cache pressure in hash scan. Can affect performance positively or negatively
     #[arg(long)]
     pub cache_dropbehind: bool,
@@ -277,4 +272,23 @@ pub enum OutputMode {
 #[derive(ValueEnum, Clone)]
 pub enum DedupMode {
     Btrfs
+}
+
+fn parse_str_prefix(v: &str) -> u64 {
+    let v = v.to_ascii_lowercase();
+    if !v.is_ascii() {
+        panic!("min/max_size must be number and optionally prefix");
+    }
+    let (num,prefix) = v.split_at(v.len()-1);
+    assert!(prefix.len() == 1);
+    let prefix = prefix.chars().next().unwrap();
+    if prefix.is_ascii_digit() {
+        return v.parse().unwrap();
+    }
+    let num = num.parse::<u128>().unwrap();
+    let shift = match prefix {
+        'k' => 10, 'm' => 20, 'g' => 30, 't' => 40, 'p' => 50, 'e' => 60, 'z' => 70, 'y' => 80,
+        _ => panic!("Invalid IEC prefix, must be k/M/G/T/P/E/Z/Y")
+    };
+    (num << shift).try_into().unwrap()
 }
