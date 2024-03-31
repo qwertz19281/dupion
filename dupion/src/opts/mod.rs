@@ -29,6 +29,7 @@ pub struct Opts {
     pub fiemap: usize,
     pub skip_no_phys: bool,
     pub euid: u32,
+    pub phys_required: bool,
 }
 
 impl Opts {

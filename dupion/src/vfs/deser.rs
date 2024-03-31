@@ -12,14 +12,15 @@ use serde_derive::*;
 use std::borrow::Cow;
 use std::hash::BuildHasherDefault;
 use std::io::BufRead;
+use std::os::unix::ffi::OsStrExt;
 use std::{io::BufReader, sync::atomic::Ordering};
 use state::State;
 use util::{VFS_STORE_NOTIF, Hash, Size};
 use std::fs::File;
 
 #[derive(Serialize,Deserialize)]
-struct EntryIntermediateMsgPack<'a> {
-    path: Cow<'a,str>,
+struct EntryIntermediateMsgPack {
+    path: ByteBuf,
     ctime: Option<i64>,
     file_size: Option<Size>,
     file_hash: Option<ByteBuf>,
@@ -53,11 +54,11 @@ struct EntryIntermediateJson<'a> {
     phys: Option<u64>,
 }
 
-impl<'a> EntryIntermediateMsgPack<'a> {
-    fn from_entry(entry: &'a VfsEntry) -> Self {
+impl EntryIntermediateMsgPack {
+    fn from_entry(entry: &VfsEntry) -> Self {
         let file_hash = entry.file_hash.as_deref().map(|v| ByteBuf::from(Vec::<u8>::from(&v[..])));
         Self {
-            path: Cow::Borrowed(entry.path.to_str().unwrap()),
+            path: ByteBuf::from(entry.path.as_os_str().as_bytes()),
             ctime: entry.ctime,
             file_size: entry.file_size,
             file_hash,
@@ -71,7 +72,7 @@ impl<'a> EntryIntermediateMsgPack<'a> {
     }
 
     fn into_entry(self, interner: &mut InternSet) -> anyhow::Result<VfsEntry> {
-        let path: Arc<Path> = PathBuf::from(self.path.as_ref()).into();
+        let path: Arc<Path> = PathBuf::from(OsStr::from_bytes(&self.path)).into();
 
         Ok(VfsEntry {
             plc: to_plc(&path),
@@ -98,6 +99,7 @@ impl<'a> EntryIntermediateMsgPack<'a> {
             phys: None,//,
             n_extents: None,
             uid: None,
+            phys_hash: None,
         })
     }
 }
@@ -131,6 +133,7 @@ impl<'a> EntryIntermediateJson<'a> {
             phys: None,
             n_extents: None,
             uid: None,
+            phys_hash: None,
         })
     }
 }

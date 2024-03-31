@@ -1,5 +1,6 @@
-use std::borrow::Borrow;
+use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Cell, RefCell};
+use std::collections::hash_map::Entry;
 use std::collections::VecDeque;
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -22,6 +23,7 @@ use crate::phase::Phase;
 use crate::soft_error;
 use crate::state::State;
 use crate::util::{Hash, DISP_PROCESSED_BYTES, DISP_PROCESSED_FILES, DISP_RELEVANT_BYTES, DISP_RELEVANT_FILES};
+use crate::vfs::entry::VfsEntryType;
 use crate::vfs::VfsId;
 
 use super::fiemap::{read_fiemap, FiemapInfo, ReadFiemapError};
@@ -49,16 +51,23 @@ impl Driver for Uringer {
             Phase::Hash => {
                 assert!(self.entries.borrow().is_some());
 
-                hash_files(
-                    self,
-                    state,
-                    opts,
-                )?;
+                {
+                    let mut entries = self.entries.borrow_mut();
+                    let entries = entries.as_mut().unwrap();
+
+                    hash_files(
+                        self,
+                        entries.iter().cloned(),
+                        state,
+                        opts,
+                        false,
+                    )?;
+                }
                 
                 Ok(())
             },
             Phase::PostHash => {
-                assert!(self.entries.borrow().is_some());
+                *self.entries.borrow_mut() = None;
                 
                 Ok(())
             }
@@ -75,6 +84,15 @@ impl Driver for Uringer {
                 .make().unwrap(),
         }
     }
+    fn read_phys(&mut self, entries: impl Iterator<Item=VfsId>, state: &'static RwLock<State>, opts: &'static Opts) -> anyhow::Result<()> {
+        hash_files(
+            self,
+            entries,
+            state,
+            opts,
+            true,
+        )
+    }
 }
 
 impl Drop for Uringer {
@@ -85,7 +103,7 @@ impl Drop for Uringer {
     }
 }
 
-fn find_files(ringer: &Uringer, state: &'static RwLock<State>, opts: &'static Opts) -> anyhow::Result<()> {
+fn find_files(ringer: &Uringer, statee: &'static RwLock<State>, opts: &'static Opts) -> anyhow::Result<()> {
     let entries = ringer.entries;
 
     *entries.borrow_mut() = Some(Vec::with_capacity(65536));
@@ -93,7 +111,7 @@ fn find_files(ringer: &Uringer, state: &'static RwLock<State>, opts: &'static Op
     let walkdir_max_files = 16;
     let max_files = opts.limit_open_files(walkdir_max_files, 4, 64);
 
-    let mut state = state.write();
+    let mut state = statee.write();
     let state = &mut *state;
     let mut entries = entries.borrow_mut();
     let entries = entries.as_mut().unwrap();
@@ -102,7 +120,8 @@ fn find_files(ringer: &Uringer, state: &'static RwLock<State>, opts: &'static Op
         let (send,recv) = crossbeam_channel::bounded::<(usize,PathBuf,u64,StatxTimestamp,u32)>(max_files*2);
         let send = &send;
 
-        s.spawn(move || {
+        s.spawn(|| {
+            let recv = recv;
             while let Ok((idx,path,size,ctime,uid)) = recv.recv() {
                 let id = common::size_file(
                     &path,
@@ -165,27 +184,32 @@ fn find_files(ringer: &Uringer, state: &'static RwLock<State>, opts: &'static Op
         });
     });
 
+    DISP_RELEVANT_FILES.store(0, Relaxed);
+    DISP_RELEVANT_BYTES.store(0, Relaxed);
+
+    for id in entries {
+        state.tree[*id].disp_relevated = false;
+        if state.is_file_read_candidate(*id,opts) {
+            state.tree[*id].disp_add_relevant();
+        }
+    }
+
     Ok(())
 }
 
-fn hash_files(ringer: &Uringer, state: &'static RwLock<State>, opts: &'static Opts) -> anyhow::Result<()> {
-    let entries = ringer.entries;
-
-    let mut entries = entries.borrow_mut();
-    let entries = entries.as_mut().unwrap();
-
+fn hash_files(ringer: &Uringer, entries: impl Iterator<Item=VfsId>, state: &'static RwLock<State>, opts: &'static Opts, phys_hard_requirement: bool) -> anyhow::Result<()> {
     let mut state = state.write();
     let state = RefCell::new(&mut *state);
 
     let mut filtered = entries.into_iter().filter_map(|id| {
         let mut s = state.borrow_mut();
-        let do_hash = s.is_file_read_candidate(*id,opts);
-        let e = &mut s.tree[*id];
+        let do_hash = s.is_file_read_candidate(id,opts) && id.evil_inner != 0;
+        let e = &mut s.tree[id];
         if do_hash {
             e.disp_add_relevant();
             assert!(e.valid);
             let path = e.path.clone();
-            Some(Rc::new(BatchFile::new(path,*id)))
+            Some(Rc::new(BatchFile::new(path,id)))
         }else{
             None
         }
@@ -221,7 +245,22 @@ fn hash_files(ringer: &Uringer, state: &'static RwLock<State>, opts: &'static Op
             //     SizeFormatterBinary::new(b.batches_total_size(&*state.borrow())),
             // );
 
+            // if !phys_hard_requirement {
+            //     let state = state.borrow();
+            //     let n_already_hashed = b.smallbatch.iter().map(|f| state.tree[f.id].file_hash.is_some() ).count();
+            //     if b.smallbatch.len()/8 >= (b.smallbatch.len()-n_already_hashed) {
+            //         // if most of the files are already hashed heuristics
+            //         b.smallbatch.retain(|f| state.tree[f.id].file_hash.is_none() );
+            //     }
+            // }
+
             uopen_files(b.smallbatch.iter().cloned(), tq1, ordion, &state, opts).await;
+
+            let s = state.borrow();
+            b.smallbatch.make_contiguous().sort_by_key(|fi|
+                (s.tree[fi.id].phys.unwrap_or(0),fi.ordion.get())
+            );
+            drop(s);
 
             {
                 let spawned = b.smallbatch.iter().map(|f|
@@ -256,18 +295,6 @@ fn hash_files(ringer: &Uringer, state: &'static RwLock<State>, opts: &'static Op
             state.borrow_mut().eventually_store_vfs(&opts.cache_path, false);
         }
     });
-
-    // DISP_RELEVANT_FILES.store(0, Relaxed);
-    // DISP_RELEVANT_BYTES.store(0, Relaxed);
-
-    let mut state = state.borrow_mut();
-
-    for id in &**entries {
-        if state.is_file_read_candidate(*id,opts) {
-            //state.tree[*id].disp_relevated = false;
-            state.tree[*id].disp_add_relevant();
-        }
-    }
 
     Ok(())
 }
@@ -312,7 +339,7 @@ fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a 
     if f.open.borrow().is_none() && f.error.borrow().is_none() {
         let fut = async move {
             let mut open_flags = 0;
-            if Some(opts.euid) == state.borrow().tree[f.id].uid {
+            if Some(opts.euid) == state.borrow().tree[f.id].uid || opts.euid == 0 {
                 open_flags |= libc::O_NOATIME;
             }
             
@@ -330,8 +357,10 @@ fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a 
 
                     if entry.file_size != Some(new_size) || entry.ctime != Some(new_ctime) {
                         dprintln!("\tSkip comodified file: {}",opts.path_disp(&f.path));
-                        DISP_RELEVANT_FILES.fetch_sub(1, Relaxed);
-                        DISP_RELEVANT_BYTES.fetch_sub(entry.file_size.unwrap_or(0), Relaxed);
+                        entry.undo_disp_add_relevant();
+                        // entry.file_size = Some(new_size);
+                        // entry.ctime = Some(new_ctime);
+                        entry.phys = Some(0);
                         drop(state);
                         utryclose_single_file(v).await;
                         return false;
@@ -347,19 +376,30 @@ fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a 
                     if opts.fiemap != 0 {
                         let fiemap = read_fiemap(&v, true, true, true, opts.fiemap);
 
+                        entry.phys = Some(0);
                         match fiemap {
                             Ok(Some(fm)) => {
                                 *f.fiemap.borrow_mut() = Some(fm.clone());
                                 entry.phys = Some(fm.phys);
                                 entry.n_extents = Some(fm.n_extents);
-                                if let Some(h) = fm.fiemap_hash.clone() {
-                                    if let Some(h) = s.fiemap2hash.get(&(new_size,h)).cloned() {
+                                if let Some(mut ph) = fm.fiemap_hash.clone() {
+                                    if let Entry::Occupied(fh) = s.fiemap2hash.entry((new_size,ph.clone())) {
                                         //dprintln!("FIEMAP SKIP EVENT {:?}",&fm);
-                                        entry.file_hash = Some(h);
+                                        if let Some(ffh) = &entry.file_hash {
+                                            if ffh != fh.get() {
+                                                dprintln!("FIEMAP-HASH IS BROKEN: {}",opts.path_disp(&f.path));
+                                            }
+                                        }
+                                        entry.file_hash = Some(fh.get().clone());
+                                        ph = fh.key().1.clone();
                                         cancel_read = true;
                                         // DISP_PROCESSED_BYTES.fetch_add(new_size, Relaxed);
                                         // DISP_PROCESSED_FILES.fetch_add(1, Relaxed);
+                                    } else if let Some(fh) = &entry.file_hash {
+                                        s.fiemap2hash.insert((new_size,ph.clone()), fh.clone());
+                                        cancel_read = true;
                                     }
+                                    entry.phys_hash = Some(ph.clone());
                                 }
                             },
                             Ok(None) | Err(ReadFiemapError::ExtentLimitExceeded) =>
@@ -368,9 +408,13 @@ fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a 
                         }
                     }
 
+                    if !s.is_file_read_candidate(f.id,opts) {
+                        cancel_read = true;
+                    }
+
                     if cancel_read {
-                        DISP_RELEVANT_FILES.fetch_sub(1, Relaxed);
-                        DISP_RELEVANT_BYTES.fetch_sub(entry.file_size.unwrap_or(0), Relaxed);
+                        s.tree[f.id].undo_disp_add_relevant();
+                        s.tree[f.id].phys = Some(0);
                         drop(state);
                         utryclose_single_file(v).await;
                         return false;
@@ -382,6 +426,12 @@ fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a 
                 Err(e) => {
                     dprintln!("Error opening file {}: {e}", f.path.to_string_lossy());
                     *f.error.borrow_mut() = Some(Box::new(e));
+
+                    let mut s = state.borrow_mut();
+
+                    s.tree[f.id].undo_disp_add_relevant();
+                    s.tree[f.id].phys = Some(0);
+
                     false
                 }
             }
@@ -447,7 +497,7 @@ fn file_read_success(f: RcBatchFile, read: u64, fsize: u64, hash: Hash, state: &
     state.push_to_hash_group(f.id,true,false).unwrap();
     if opts.fiemap > 1 {
         if let Some(v) = f.fiemap.borrow().as_ref().and_then(|v| v.fiemap_hash.as_ref() ) {
-            state.fiemap2hash.insert((fsize,v.clone()), hash);
+            state.fiemap2hash.entry((fsize,v.clone())).or_insert_with(|| state.tree[f.id].file_hash.clone().unwrap());
         }
     }
 
@@ -642,7 +692,7 @@ async fn upump_batch(b: &mut Batches, mut pump_src: impl Iterator<Item=RcBatchFi
         //     continue;
         // }
 
-        let fsize = state.borrow().tree[fi.id].file_size.unwrap();
+        let fsize = file_cost(&fi, &state.borrow());
 
         if fsize >= b.bigfile_thresh {
             if b.bigbatch.len() < b.bigbatch_limit {
@@ -668,6 +718,15 @@ async fn upump_batch(b: &mut Batches, mut pump_src: impl Iterator<Item=RcBatchFi
     // b.result_ordered.make_contiguous().sort_by_key(|fi| fi.file.orderid );
 
     pumped_anything
+}
+
+fn file_cost(f: &RcBatchFile, state: &State) -> u64 {
+    let entry = &state.tree[f.id];
+    if entry.file_hash.is_some() {
+        0
+    } else {
+        entry.file_size.unwrap()
+    }
 }
 
 // fn try_resultize(result_ordered: &mut VecDeque<RcBatchFile>, force: bool, mut dest: impl FnMut(RcBatchFile)) {

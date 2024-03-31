@@ -31,9 +31,10 @@ pub struct VfsEntry {
     pub phys: Option<u64>,
     pub n_extents: Option<usize>,
     pub uid: Option<u32>,
+    pub phys_hash: Option<Hash>,
 }
 
-const _: () = assert!(std::mem::size_of::<VfsEntry>() == 224);
+const _: () = assert!(std::mem::size_of::<VfsEntry>() == 232);
 
 impl VfsEntry {
     pub fn new(path: Arc<Path>, plc: Arc<OsStr>) -> Self {
@@ -62,15 +63,29 @@ impl VfsEntry {
             phys: Some(0),
             n_extents: None,
             uid: None,
+            phys_hash: None,
         }
     }
 
     pub fn disp_add_relevant(&mut self) {
-        if !self.disp_relevated && self.file_hash.is_none() {
-            let size = self.file_size.unwrap();
-            DISP_RELEVANT_BYTES.fetch_add(size,Ordering::Relaxed);
+        if !self.disp_relevated && (self.file_hash.is_none() || self.phys.is_none()) {
+            if self.file_hash.is_none() {
+                let size = self.file_size.unwrap();
+                DISP_RELEVANT_BYTES.fetch_add(size,Ordering::Relaxed);
+            }
             DISP_RELEVANT_FILES.fetch_add(1,Ordering::Relaxed);
             self.disp_relevated = true;
+        }
+    }
+
+    pub fn undo_disp_add_relevant(&mut self) {
+        if self.disp_relevated {
+            if self.file_hash.is_none() {
+                let size = self.file_size.unwrap();
+                DISP_RELEVANT_BYTES.fetch_sub(size,Ordering::Relaxed);
+            }
+            DISP_RELEVANT_FILES.fetch_sub(1,Ordering::Relaxed);
+            self.disp_relevated = false;
         }
     }
 
@@ -193,8 +208,9 @@ impl State {
             s.dir_size = None;
             s.dir_hash = None;
             s.dedup_state = None;
-            s.phys = Some(0);
-            s.n_extents = None;
+            s.phys = None;
+            s.phys_hash = None;
+            s.n_extents = None; //TODO only skip resetting them if they are not persisted
             s.ctime = Some(ctime);
             s.valid = true;
             false

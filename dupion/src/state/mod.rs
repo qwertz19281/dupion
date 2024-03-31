@@ -10,6 +10,7 @@ pub struct State {
     pub tree: Vfs,
     pub sizes: Sizes,
     pub hashes: Hashes,
+    pub dedup_active: bool,
     pub cache_allowed: bool,
     pub fiemap2hash: rustc_hash::FxHashMap<(u64,Hash),Hash>,
 }
@@ -50,6 +51,7 @@ impl State {
         Ok(())
     }
     pub fn push_to_hash_group(&mut self, id: VfsId, file: bool, dir: bool) -> AnyhowResult<()> {
+        if self.dedup_active {return Ok(());}
         ensure!(self.tree[id].valid,"Attemped to group non-validated entry");
         if !self.tree[id].unique {
             ensure!(!file || self.tree[id].is_file || self.tree[id].file_hash.is_some(),"The to push entry to HashTable has no hash (file)");
@@ -94,9 +96,13 @@ impl State {
             .map_or(false, |e| e.entries.len() > 1)
     }
     pub fn is_file_read_candidate(&self, id: VfsId, opts: &Opts) -> bool {
+        let phys_required = opts.phys_required
+            && self.tree[id].phys.is_none()
+            && self.tree[id].file_hash.clone().map_or(false,|h| self.more_than_one_hash(&h) );
+
         let mut do_hash = true;
         //only hash if no hash
-        do_hash &= self.tree[id].file_hash.is_none();
+        do_hash &= self.tree[id].file_hash.is_none() || phys_required;
         //only files
         do_hash &= self.tree[id].is_file;
         
@@ -114,6 +120,7 @@ impl State {
         do_hash
     }
     pub fn more_than_one_hash(&self, hash: &Hash) -> bool {
+        if self.dedup_active {return true;}
         self.num_hashes(hash) > 1
     }
     pub fn num_hashes(&self, hash: &Hash) -> usize {
@@ -137,6 +144,7 @@ impl State {
             tree: Vfs::new(),
             sizes: FxHashMap::with_capacity_and_hasher(16384, Default::default()),
             hashes: FxHashMap::with_capacity_and_hasher(16384, Default::default()),
+            dedup_active: false,
             fiemap2hash: FxHashMap::with_capacity_and_hasher(16384, Default::default()),
             cache_allowed,
         }

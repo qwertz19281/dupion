@@ -9,7 +9,7 @@ use fd::FileDescriptor;
 pub struct BtrfsDedup;
 
 impl Deduper for BtrfsDedup {
-    fn dedup_groups(&mut self, groups: Vec<DedupGroup>, state: &'static RwLock<State>, opts: &'static Opts) -> AnyhowResult<()> {
+    fn dedup_groups(&mut self, mut groups_src: impl Iterator<Item=DedupGroup>, state: &'static RwLock<State>, opts: &'static Opts) -> AnyhowResult<()> {
         // The dedups are split in batches to fit the os cache for readahead
         // the available file cache is estimated by the unused os memory
         // all files in batch will be opened 
@@ -24,15 +24,15 @@ impl Deduper for BtrfsDedup {
 
         let mut cache_max = cache_info.get(); //only refresh after actual submit
 
-        let mut s = state.write();
-
         let mut submit_buf = Vec::<(DedupGroup,bool)>::new();
 
-        let mut groups = VecDeque::from(groups);
+        let mut groups = VecDeque::new();
 
-        while !groups.is_empty() || !submit_buf.is_empty() {
+        let mut iter_depleted = false;
+
+        while !groups.is_empty() || !submit_buf.is_empty() || !iter_depleted {
             // This inner "loop" is kinda like a checklist, if we have to change something on the bufs, we "start over" with continue; or break if we're good
-            while !groups.is_empty() || !submit_buf.is_empty() {
+            while !groups.is_empty() || !submit_buf.is_empty() || !iter_depleted {
                 // Current submit usage
                 let mut submit_sum = 0;
                 let mut submit_usage = 0;
@@ -40,6 +40,14 @@ impl Deduper for BtrfsDedup {
                 for (f,_) in &submit_buf {
                     submit_usage += f.usage();
                     submit_sum += f.sum();
+                }
+
+                if groups.front().is_none() {
+                    if let Some(g) = groups_src.next() {
+                        groups.push_back(g);
+                    } else {
+                        iter_depleted = true;
+                    }
                 }
 
                 // Populate from input
@@ -92,6 +100,8 @@ impl Deduper for BtrfsDedup {
                     assert!(max_range_size*g.sum() < g.usage());
                     let max_range_size = max_range_size.max(file_split_round);
 
+                    let mut s = state.write();
+
                     while !g.range.is_empty() {
                         let first_half = g.split_off_start_range(max_range_size);
 
@@ -109,6 +119,7 @@ impl Deduper for BtrfsDedup {
             }
 
             if !submit_buf.is_empty() {
+                let mut s = state.write();
                 dedup_group_batch(&*submit_buf, &mut s, opts, submit_buf.iter().map(|v| v.0.usage()).sum())?;
                 submit_buf.clear();
             }

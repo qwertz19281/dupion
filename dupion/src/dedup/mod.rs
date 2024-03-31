@@ -1,3 +1,5 @@
+use self::driver::Driver;
+
 use super::*;
 use parking_lot::RwLock;
 use state::State;
@@ -11,104 +13,138 @@ pub mod btrfs;
 pub mod fd;
 
 pub trait Deduper {
-    fn dedup(&mut self, state: &'static RwLock<State>, opts: &'static Opts) -> AnyhowResult<()> {
+    fn dedup(&mut self, state: &'static RwLock<State>, opts: &'static Opts, driver: &mut impl Driver) -> AnyhowResult<()> {
         DISP_PROCESSED_FILES.store(0,Ordering::Relaxed);
         DISP_PREV.store(0,Ordering::Relaxed);
         DISP_PROCESSED_BYTES.store(0,Ordering::Relaxed);
         DISP_RELEVANT_FILES.store(0,Ordering::Relaxed);
         DISP_RELEVANT_BYTES.store(0,Ordering::Relaxed);
         DISP_DEDUPED_BYTES.store(0, Ordering::Relaxed);
+
+        if opts.fiemap == 0 {bail!("Dedup requires FIEMAP");}
         
-        let s = state.write();
-        let mut dest: Vec<DedupGroup> = Vec::with_capacity(s.hashes.len());
+        let mut s = state.write();
+
         let mut candidates = Vec::with_capacity(1024);
+        let mut bad = vec![];
 
-        for e in s.hashes.values() {
-            if e.size == 0 {continue;} //TODO proper min size option
-
-            candidates.clear();
-
-            candidates.extend(
-            e.entries.iter()
-                    .filter(|&&(typ,id)| 
-                        typ == VfsEntryType::File
-                        && s.tree[id].phys.is_some()
-                        && s.tree[id].phys != Some(0)
-                        && s.tree[id].valid
-                        && s.tree[id].n_extents.is_some()
-                    )
-                    .map(|&(_,id)| DedupCandidate {
-                        id,
-                        phys: s.tree[id].phys.unwrap(),
-                        phys_occurrences: 0,
-                        file_size: s.tree[id].file_size.unwrap(),
-                        n_extends: s.tree[id].n_extents.unwrap(),
-                        ctime: s.tree[id].ctime.unwrap()
-                    })
-            );
-
-            if candidates.len() < 2 {continue;}
-
-            let avg_phys = candidates.iter()
-                .map(|c| c.phys )
-                .sum::<u64>() / (candidates.len() as u64);
-            
-            candidates.sort_by_key(|c| c.phys );
-
-            count_phys_occurrences_sorted(&mut candidates);
-
-            let senpai = {
-                let (idx,&new) = candidates.iter()
-                    .enumerate()
-                    .min_by_key(|(_,c)| (
-                        // senpai prioritization of candidate with the:
-                        // 1. least extents
-                        c.n_extends,
-                        // 2. most common phys in group
-                        Reverse(c.phys_occurrences),
-                        // 3. oldest ctime
-                        c.ctime,
-                        // 4. smallest distance from avg phys
-                        distance(avg_phys, c.phys)
-                    ))
-                    .unwrap();
-
-                candidates.remove(idx);
-
-                new
-            };
-
-            candidates.retain(|c|
-                c.id != senpai.id &&
-                (opts.aggressive_dedup || c.phys != senpai.phys)
-            );
-            if candidates.is_empty() {continue;}
-
-            let size = senpai.file_size;
-
-            DISP_RELEVANT_BYTES.fetch_add(candidates.len() as u64*size,Ordering::Relaxed);
-            DISP_RELEVANT_FILES.fetch_add(candidates.len() as u64,Ordering::Relaxed);
-
-            dest.push(DedupGroup{
-                senpai: senpai.id,
-                dups: candidates.iter().map(|c| c.id ).collect(),
-                range: 0..size,
-                actual_file_size: size,
-                avg_phys,
-            });
-        }
+        let hash_groups = std::mem::take(&mut s.hashes);
+        s.dedup_active = true;
 
         drop(s);
 
-        dest.sort_by_key(|g| g.avg_phys );
-        dest.shrink_to_fit();
+        let groups = hash_groups.iter()
+            .filter_map(|(_,e)| {
+                if e.size == 0 || e.entries.len() < 2 {return None;} //TODO proper min size option
 
-        self.dedup_groups(dest, state, opts)?;
+                candidates.clear();
+
+                {
+                    let s = state.read();
+                    for &(typ,id) in e.entries.iter() {
+                        if typ == VfsEntryType::File && s.tree[id].phys.is_none() && s.tree[id].file_hash.is_some() {
+                            bad.push(id);
+                        }
+                    }
+                    drop(s);
+                    if !bad.is_empty() {
+                        if let Err(e) = driver.read_phys(bad.drain(..), state, opts) {
+                            dprintln!("\tphys fulfill error: {e}");
+                        }
+                    }
+                }
+
+                let s = state.read();
+
+                candidates.extend(
+                e.entries.iter()
+                        .filter(|&&(typ,id)| 
+                            typ == VfsEntryType::File
+                            && s.tree[id].phys.is_some()
+                            && s.tree[id].phys != Some(0)
+                            && s.tree[id].valid
+                            && s.tree[id].n_extents.is_some()
+                        )
+                        .map(|&(_,id)| DedupCandidate {
+                            id,
+                            phys: s.tree[id].phys.unwrap(),
+                            phys_occurrences: 0,
+                            file_size: s.tree[id].file_size.unwrap(),
+                            n_extends: s.tree[id].n_extents.unwrap(),
+                            ctime: s.tree[id].ctime.unwrap()
+                        })
+                );
+
+                if candidates.len() < 2 {return None;}
+
+                let avg_phys = candidates.iter()
+                    .map(|c| c.phys )
+                    .sum::<u64>() / (candidates.len() as u64);
+                
+                candidates.sort_by_key(|c| c.phys );
+
+                count_phys_occurrences_sorted(&mut candidates);
+
+                let senpai = {
+                    let (idx,&new) = candidates.iter()
+                        .enumerate()
+                        .min_by_key(|(_,c)| (
+                            // senpai prioritization of candidate with the:
+                            // 1. least extents
+                            c.n_extends,
+                            // 2. most common phys in group
+                            Reverse(c.phys_occurrences),
+                            // 3. oldest ctime
+                            c.ctime,
+                            // 4. smallest distance from avg phys
+                            distance(avg_phys, c.phys)
+                        ))
+                        .unwrap();
+
+                    candidates.remove(idx);
+
+                    new
+                };
+
+                fn uncomp_ph(s: &State, a: VfsId, b: VfsId) -> bool {
+                    let a = &s.tree[a];
+                    let b = &s.tree[b];
+                    let Some(aa) = a.phys_hash.as_ref() else {return a.phys != b.phys};
+                    let Some(bb) = b.phys_hash.as_ref() else {return a.phys != b.phys};
+                    aa != bb
+                }
+
+                candidates.retain(|c|
+                    c.id != senpai.id &&
+                    (opts.aggressive_dedup || uncomp_ph(&*s, c.id, senpai.id))
+                );
+                if candidates.is_empty() {return None;}
+
+                let size = senpai.file_size;
+
+                DISP_RELEVANT_BYTES.fetch_add(candidates.len() as u64*size,Ordering::Relaxed);
+                DISP_RELEVANT_FILES.fetch_add(candidates.len() as u64,Ordering::Relaxed);
+
+                Some(DedupGroup{
+                    senpai: senpai.id,
+                    dups: candidates.iter().map(|c| c.id ).collect(),
+                    range: 0..size,
+                    actual_file_size: size,
+                    avg_phys,
+                })
+            });
+
+        self.dedup_groups(groups, state, opts)?;
+
+        let mut s = state.write();
+
+        s.hashes = hash_groups;
+        s.dedup_active = false;
 
         Ok(())
     }
 
-    fn dedup_groups(&mut self, groups: Vec<DedupGroup>, state: &'static RwLock<State>, opts: &'static Opts) -> AnyhowResult<()>;
+    fn dedup_groups(&mut self, groups: impl Iterator<Item=DedupGroup>, state: &'static RwLock<State>, opts: &'static Opts) -> AnyhowResult<()>;
 }
 
 #[derive(Clone, Copy)]

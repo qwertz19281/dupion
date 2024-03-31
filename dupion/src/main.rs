@@ -36,6 +36,7 @@ fn main() {
         fiemap: o.fiemap,
         skip_no_phys: o.phys_only && o.fiemap != 0,
         euid,
+        phys_required: matches!(o.dedup,Some(DedupMode::Btrfs)),
     }));
 
     if opts.paths.is_empty() {
@@ -58,8 +59,10 @@ fn main() {
         state.write().eventually_load_vfs(&opts.cache_path);
     }
 
+    let mut driver = Uringer::new(opts);
+
     if !o.no_scan {
-        scan(&o, opts, state);
+        scan(&mut driver, &o, opts, state);
     }else{
         dirty_load(&o, opts, state);
     }
@@ -69,7 +72,7 @@ fn main() {
     if let Some(DedupMode::Btrfs) = o.dedup {
         eprintln!("\n#### Dedup\n");
         stat_section_start();
-        BtrfsDedup{}.dedup(state,opts).unwrap();
+        BtrfsDedup{}.dedup(state, opts, &mut driver).unwrap();
         stat_section_end();
     }
 
@@ -98,14 +101,12 @@ fn main() {
     }
 }
 
-pub fn scan(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
-    let mut d = Uringer::new(opts);
-
+pub fn scan(driver: &mut impl Driver, o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
     eprintln!("\n#### Pass 1\n");
 
     stat_section_start();
     spawn_info_thread(opts);
-    d.run(state,opts,Phase::Size).unwrap();
+    driver.run(state,opts,Phase::Size).unwrap();
     stat_section_end();
 
     if o.bench_pass_1 {return;}
@@ -113,13 +114,13 @@ pub fn scan(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
     eprintln!("\n#### Pass 2\n");
 
     stat_section_start();
-    d.run(state,opts,Phase::Hash).unwrap();
+    driver.run(state,opts,Phase::Hash).unwrap();
     stat_section_end();
 
     eprintln!("\n#### Pass 3\n");
 
     stat_section_start();
-    d.run(state,opts,Phase::PostHash).unwrap();
+    driver.run(state,opts,Phase::PostHash).unwrap();
     stat_section_end();
 
     let mut state = state.write();

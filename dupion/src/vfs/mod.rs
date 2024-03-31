@@ -133,6 +133,7 @@ impl Vfs {
             phys: Some(0),
             n_extents: None,
             uid: None,
+            phys_hash: None,
         });
         senf
     }
