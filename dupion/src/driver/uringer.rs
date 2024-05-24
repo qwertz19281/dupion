@@ -12,7 +12,7 @@ use std::time::{Duration, SystemTime};
 
 use blake3::Hasher;
 use glommio::io::{BufferedFile, ReadResult};
-use glommio::sys::StatxTimestamp;
+use glommio::StatxTimestamp;
 use glommio::{executor, Latency, LocalExecutor, LocalExecutorBuilder, Placement, Shares, TaskQueueHandle};
 use parking_lot::RwLock;
 use size_format::SizeFormatterBinary;
@@ -343,7 +343,7 @@ fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a 
                 open_flags |= libc::O_NOATIME;
             }
             
-            match glommio::io::OpenOptions::new().read(true).custom_flags(open_flags).buffered_open(&*f.path).await {
+            match glommio::io::OpenOptions::new().read(true).custom_flags(open_flags).buffered_open_fdcwd(&*f.path).await {
                 Ok(v) => {
                     let ord = ordion.get();
                     f.ordion.set(ord);

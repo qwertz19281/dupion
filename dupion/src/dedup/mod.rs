@@ -33,9 +33,19 @@ pub trait Deduper {
 
         drop(s);
 
+        for (_,e) in &hash_groups {
+            if e.size == 0 || e.entries.len() < 2 {continue;}
+
+            DISP_RELEVANT_BYTES.fetch_add(e.entries.len().saturating_sub(1) as u64 * e.size, Ordering::Relaxed);
+            DISP_RELEVANT_FILES.fetch_add(e.entries.len().saturating_sub(1) as u64, Ordering::Relaxed);
+        }
+
         let groups = hash_groups.iter()
             .filter_map(|(_,e)| {
                 if e.size == 0 || e.entries.len() < 2 {return None;} //TODO proper min size option
+
+                DISP_RELEVANT_BYTES.fetch_sub(e.entries.len().saturating_sub(1) as u64 * e.size, Ordering::Relaxed);
+                DISP_RELEVANT_FILES.fetch_sub(e.entries.len().saturating_sub(1) as u64, Ordering::Relaxed);
 
                 candidates.clear();
 

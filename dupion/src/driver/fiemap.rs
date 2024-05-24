@@ -8,6 +8,8 @@ use fiemap::FiemapExtentFlags;
 
 use crate::util::Hash;
 
+const FETCH_SIZE: usize = 64;
+
 #[derive(Clone)]
 pub struct FiemapInfo {
     /// First phys
@@ -26,7 +28,6 @@ pub struct FiemapInfo {
     pub fiemap_hash: Option<Hash>,
 }
 
-// TODO fiemap::fm_length is garbage (2^64−1)
 pub fn read_fiemap(fd: &impl AsRawFd, fiemap: bool, scan_whole: bool, hash: bool, max_e: usize) -> Result<Option<FiemapInfo>,ReadFiemapError> {
     pub fn legal_flags() -> FiemapExtentFlags {
         FiemapExtentFlags::LAST |
@@ -44,10 +45,10 @@ pub fn read_fiemap(fd: &impl AsRawFd, fiemap: bool, scan_whole: bool, hash: bool
         let mut result = None;
         let mut n_extents = 0;
         let mut n_extents_shared = 0;
-        for e in fiemap::fiemap2(fd)? {
+        for e in fiemap::fiemap_fd_n::<FETCH_SIZE>(fd)? {
             let e = e?;
 
-            if n_extents > max_e || e.fm_extent_count as usize > max_e { // TODO don't. fm_extent_count is garbage too
+            if n_extents > max_e {
                 return Err(ReadFiemapError::ExtentLimitExceeded);
             }
             if (!legal_flags()).intersects(e.fe_flags) {
@@ -80,10 +81,10 @@ pub fn read_fiemap(fd: &impl AsRawFd, fiemap: bool, scan_whole: bool, hash: bool
 
     let mut n_extents = 0;
     let mut n_extents_shared = 0;
-    for e in fiemap::fiemap2(fd)? {
+    for e in fiemap::fiemap_fd_n::<FETCH_SIZE>(fd)? {
         let e = e?;
-        
-        if n_extents > max_e || e.fm_extent_count as usize > max_e {
+
+        if n_extents > max_e {
             return Err(ReadFiemapError::ExtentLimitExceeded);
         }
         if (!legal_flags()).intersects(e.fe_flags) {
