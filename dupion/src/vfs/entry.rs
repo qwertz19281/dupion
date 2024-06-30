@@ -1,5 +1,5 @@
 use super::*;
-use std::{sync::{atomic::Ordering, Arc}, ffi::OsString};
+use std::sync::{atomic::Ordering, Arc};
 use util::{DISP_RELEVANT_FILES, Hash, DISP_RELEVANT_BYTES, Size};
 
 use state::State;

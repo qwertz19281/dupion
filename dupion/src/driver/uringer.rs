@@ -1,4 +1,3 @@
-use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Cell, RefCell};
 use std::collections::hash_map::Entry;
 use std::collections::VecDeque;
@@ -8,14 +7,13 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use blake3::Hasher;
 use glommio::io::{BufferedFile, ReadResult};
 use glommio::StatxTimestamp;
 use glommio::{executor, Latency, LocalExecutor, LocalExecutorBuilder, Placement, Shares, TaskQueueHandle};
 use parking_lot::RwLock;
-use size_format::SizeFormatterBinary;
 use walkdir::WalkDir;
 
 use crate::opts::Opts;
@@ -23,7 +21,6 @@ use crate::phase::Phase;
 use crate::soft_error;
 use crate::state::State;
 use crate::util::{Hash, DISP_PROCESSED_BYTES, DISP_PROCESSED_FILES, DISP_RELEVANT_BYTES, DISP_RELEVANT_FILES};
-use crate::vfs::entry::VfsEntryType;
 use crate::vfs::VfsId;
 
 use super::fiemap::{read_fiemap, FiemapInfo, ReadFiemapError};

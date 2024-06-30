@@ -1,4 +1,4 @@
-use dupion::{dedup::{btrfs::BtrfsDedup, Deduper}, driver::{self, platterwalker::PlatterWalker, Driver}, opts::Opts, output::{groups::print_groups, tree::print_tree, treediff::print_treediff}, phase::Phase, print_statw, process::{calculate_dir_hash, export, find_shadowed}, stat_section_end, stat_section_start, state::State, util::*, vfs::VfsId, zip::setlocale_hack};
+use dupion::{dedup::{btrfs::BtrfsDedup, Deduper}, driver::{platterwalker::PlatterWalker, Driver}, opts::Opts, output::{groups::print_groups, tree::print_tree, treediff::print_treediff}, phase::Phase, print_statw, process::{calculate_dir_hash, export, find_shadowed}, stat_section_end, stat_section_start, state::State, util::*, vfs::VfsId, zip::setlocale_hack};
 use std::{io::{stderr, IsTerminal as _}, path::PathBuf, sync::atomic::Ordering, time::Duration};
 use parking_lot::RwLock;
 use clap::{Parser, ValueEnum};
@@ -52,14 +52,14 @@ fn main() {
 
     // dedup engine requires phys
     if opts.fiemap == 0 && matches!(o.dedup,Some(DedupMode::Btrfs)) {
-        opts.fiemap = 1;
+        opts.fiemap = 1024;
     }
 
     opts.validate().unwrap();
 
     if opts.uring {
         #[cfg(feature = "io_uring")]
-        main_op(driver::uringer::Uringer::new(opts), o, opts);
+        main_op(dupion::driver::uringer::Uringer::new(opts), o, opts);
     } else {
         main_op(PlatterWalker::new(opts), o, opts);
     }
@@ -75,7 +75,7 @@ pub fn main_op(mut driver: impl Driver, o: OptInput, opts: &'static Opts) {
     if !o.no_scan {
         scan(&mut driver, &o, opts, state);
     }else{
-        dirty_load(&o, opts, state);
+        dirty_load(opts, state);
     }
 
     if o.bench_pass_1 {return;}
@@ -134,12 +134,12 @@ pub fn scan(driver: &mut impl Driver, o: &OptInput, opts: &'static Opts, state: 
     driver.run(state,opts,Phase::PostHash).unwrap();
     stat_section_end();
 
-    let mut state = state.write();
+    let state = state.write();
 
     state.eventually_store_vfs(&opts.cache_path, true);
 }
 
-pub fn dirty_load(o: &OptInput, opts: &'static Opts, state: &'static RwLock<State>) {
+pub fn dirty_load(opts: &'static Opts, state: &'static RwLock<State>) {
     let mut state = state.write();
 
     for root in &opts.paths {

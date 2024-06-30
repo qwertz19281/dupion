@@ -1,6 +1,6 @@
 use super::*;
 use entry::VfsEntry;
-use std::{ffi::{OsStr, OsString}, ops::{Deref, Index, IndexMut}, path::{Component, Path, PathBuf}, rc::Rc, sync::Arc};
+use std::{ffi::{OsStr, OsString}, ops::{Deref, Index, IndexMut}, path::{Component, Path, PathBuf}, sync::Arc};
 
 pub mod entry;
 pub mod deser;
@@ -201,7 +201,7 @@ impl<P> Deref for AbsPath<P> where P: AsRef<Path> {
 }
 
 pub fn to_plc(p: &Path) -> Arc<OsStr> {
-    let mut s = p.components()
+    let s = p.components()
         .last()
         .map(|c| c.as_os_str() )
         .unwrap_or(OsStr::new(""))

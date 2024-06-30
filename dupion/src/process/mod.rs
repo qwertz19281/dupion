@@ -3,7 +3,7 @@ use state::State;
 use group::HashGroup;
 use vfs::VfsId;
 use util::{Hash, Size};
-use std::{sync::Arc, io::Write, cmp::Reverse};
+use std::{sync::Arc, cmp::Reverse};
 
 pub fn export(b: &mut State) -> Vec<HashGroup> {
     let tree = &mut b.tree;

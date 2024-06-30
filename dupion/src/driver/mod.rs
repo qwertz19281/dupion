@@ -15,5 +15,5 @@ pub(crate) mod fiemap;
 pub trait Driver {
     fn run(&mut self, state: &'static RwLock<State>, opts: &'static Opts, phase: Phase) -> AnyhowResult<()>;
     fn new(opts: &'static Opts) -> Self;
-    fn read_phys(&mut self, entries: impl Iterator<Item=VfsId>, state: &'static RwLock<State>, opts: &'static Opts) -> AnyhowResult<()> {Ok(())}
+    fn read_phys(&mut self, _entries: impl Iterator<Item=VfsId>, _state: &'static RwLock<State>, _opts: &'static Opts) -> AnyhowResult<()> {Ok(())}
 }

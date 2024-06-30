@@ -1,7 +1,5 @@
 use std::fmt::Debug;
-use std::num::NonZeroUsize;
 use std::os::fd::AsRawFd;
-use std::path::Path;
 use std::sync::Arc;
 
 use fiemap::FiemapExtentFlags;

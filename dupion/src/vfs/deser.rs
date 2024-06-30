@@ -50,8 +50,8 @@ struct EntryIntermediateJson<'a> {
     upgrade: Option<u64>,
     #[serde(default)] 
     dedup_state: Option<bool>,
-    #[serde(default)] 
-    phys: Option<u64>,
+    // #[serde(default)] 
+    // phys: Option<u64>,
 }
 
 impl EntryIntermediateMsgPack {

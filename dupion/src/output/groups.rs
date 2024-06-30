@@ -4,7 +4,7 @@ use size_format::SizeFormatterBinary;
 pub fn print_groups(v: &[HashGroup], b: &State, opts: &Opts) {
     for h in v {
         let mut non_shadowed = 0usize;
-        let mut shadowed = 0usize;
+        //let mut shadowed = 0usize;
 
         let entries = &h.entries.iter()
             .filter(|(typ,e)| b.tree[*e].is2(*typ) )
@@ -16,7 +16,7 @@ pub fn print_groups(v: &[HashGroup], b: &State, opts: &Opts) {
             let e = &b.tree[*e];
             if e.exists() {
                 if e.shadowed(*typ) {
-                    shadowed += 1;
+                    //shadowed += 1;
                 }else{
                     non_shadowed += 1;
                 }

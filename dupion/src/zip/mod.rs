@@ -1,6 +1,6 @@
 use super::*;
 use opts::Opts;
-use std::{ffi::CString, sync::Arc, path::Path, io::{Read, Write, Seek}};
+use std::{ffi::CString, sync::Arc, path::Path, io::{Read, Seek}};
 use parking_lot::RwLock;
 use state::State;
 use libarchive::{entry::OwnedEntry, reader::{StreamReader, Reader as AReader, Builder}, archive::{FileType, Entry, ReadFormat, ReadFilter, ReadCompression}};
