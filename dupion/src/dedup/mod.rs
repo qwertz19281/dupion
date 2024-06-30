@@ -52,7 +52,7 @@ pub trait Deduper {
                 {
                     let s = state.read();
                     for &(typ,id) in e.entries.iter() {
-                        if typ == VfsEntryType::File && s.tree[id].phys.is_none() && s.tree[id].file_hash.is_some() {
+                        if typ == VfsEntryType::File && opts.uring && s.tree[id].phys.is_none() && s.tree[id].file_hash.is_some() {
                             bad.push(id);
                         }
                     }

@@ -37,6 +37,7 @@ fn main() {
         skip_no_phys: o.phys_only && o.fiemap != 0,
         euid,
         phys_required: matches!(o.dedup,Some(DedupMode::Btrfs)),
+        uring: o.uring && !o.read_archives,
     }));
 
     if opts.paths.is_empty() {
@@ -53,13 +54,19 @@ fn main() {
 
     opts.validate().unwrap();
 
+    if opts.uring {
+        main_op(Uringer::new(opts), o, opts);
+    } else {
+        main_op(PlatterWalker::new(opts), o, opts);
+    }
+}
+
+pub fn main_op(mut driver: impl Driver, o: OptInput, opts: &'static Opts) {
     let state = Box::leak(Box::new(RwLock::new(State::new(!o.no_cache))));
 
     if !o.bench_pass_1 {
         state.write().eventually_load_vfs(&opts.cache_path);
     }
-
-    let mut driver = Uringer::new(opts);
 
     if !o.no_scan {
         scan(&mut driver, &o, opts, state);
@@ -226,6 +233,11 @@ pub struct OptInput {
     #[arg(short, long, default_value_t = 0)]
     pub threads: usize,
 
+    /// EXPERIMENTAL Use io_uring engine (no archive reading support yet, and mainly tuned toward dedup mode)
+    /// For dedup, recommended to also use --min-size 2048 --phys-only --dedup btrfs to skip not dedupable files (these will then also be absent from the cache)
+    #[arg(long, verbatim_doc_comment)]
+    pub uring: bool,
+
     /// EXPERIMENTAL Read buffer in MiB
     #[arg(long, default_value_t = 1)]
     pub read_buffer: usize,
@@ -261,7 +273,7 @@ pub struct OptInput {
     #[arg(long)]
     pub dir_prefetch: bool,
     /// EXPERIMENTAL Don't scan for files, use found files from cache instead  
-    /// Should not be set if the cache previously only ran with --phys-only (except for dedup-only use)
+    /// Note that if parameters to skip files like --min/max-file or --phys-only were used in a previous run, these skipped files won't be in the cache, and then using --no-scan for non-dedup will return wrong results
     #[arg(long)]
     pub no_scan: bool,
 
