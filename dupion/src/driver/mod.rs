@@ -7,6 +7,7 @@ use phase::Phase;
 use parking_lot::RwLock;
 
 pub mod platterwalker;
+#[cfg(feature = "io_uring")]
 pub mod uringer;
 pub mod common;
 pub(crate) mod fiemap;

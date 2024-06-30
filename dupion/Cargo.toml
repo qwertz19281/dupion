@@ -30,8 +30,8 @@ rustc-hash = "1.1"
 hashbrown = { version = "0.14", default-features = false, features = ["inline-more", "allocator-api2"] }
 zstd = "0.13"
 walkdir = "2.5"
-glommio = { git = "https://github.com/qwertz19281/dupion_glommio", rev = "b42db415" }
-#glommio = { path = "../../dupion_glommio/glommio" }
+glommio = { git = "https://github.com/qwertz19281/dupion_glommio", rev = "b42db415", optional = true }
+#glommio = { path = "../../dupion_glommio/glommio", optional = true }
 crossbeam-channel = "0.5"
 fiemap = { git = "https://github.com/qwertz19281/fiemap-rs", rev = "b2cfc146" }
 #fiemap = { path = "../../fiemap-rs/fiemap" }
@@ -40,6 +40,10 @@ hex = "0.4"
 
 [dev-dependencies]
 clap_complete = "4"
+
+[features]
+default = ["io_uring"]
+io_uring = ["dep:glommio"]
 
 # [dependencies.maligned]
 # version = "0.2"
