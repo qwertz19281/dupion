@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use blake3::Hasher;
 use glommio::io::{BufferedFile, ReadResult};
-use glommio::StatxTimestamp;
+use glommio::{GlommioError, StatxTimestamp};
 use glommio::{executor, Latency, LocalExecutor, LocalExecutorBuilder, Placement, Shares, TaskQueueHandle};
 use parking_lot::RwLock;
 use walkdir::WalkDir;
@@ -29,6 +29,20 @@ use super::{common, Driver};
 pub struct Uringer {
     pub entries: &'static RefCell<Option<Vec<VfsId>>>,
     pub ex: LocalExecutor,
+}
+
+impl Uringer {
+    pub fn try_new(opts: &Opts) -> Result<Self,GlommioError<()>> {
+        Ok(Self{
+            entries: Box::leak(Box::new(RefCell::new(None))),
+            ex: LocalExecutorBuilder::new(Placement::Unbound)
+                .blocking_thread_pool_placement(glommio::PoolPlacement::Unbound(8))
+                .spin_before_park(Duration::from_micros(16))
+                .io_memory(opts.prefetch_budget as usize)
+                .ring_depth(2048)
+                .make()?,
+        })
+    }
 }
 
 impl Driver for Uringer {
@@ -70,16 +84,8 @@ impl Driver for Uringer {
             }
         }
     }
-    fn new(opts: &'static Opts) -> Self {
-        Self{
-            entries: Box::leak(Box::new(RefCell::new(None))),
-            ex: LocalExecutorBuilder::new(Placement::Unbound)
-                .blocking_thread_pool_placement(glommio::PoolPlacement::Unbound(8))
-                .spin_before_park(Duration::from_micros(16))
-                .io_memory(opts.prefetch_budget as usize)
-                .ring_depth(2048)
-                .make().unwrap(),
-        }
+    fn new(opts: &mut Opts) -> Self {
+        Self::try_new(opts).unwrap()
     }
     fn read_phys(&mut self, entries: impl Iterator<Item=VfsId>, state: &'static RwLock<State>, opts: &'static Opts) -> anyhow::Result<()> {
         hash_files(

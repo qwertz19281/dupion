@@ -1,4 +1,4 @@
-use dupion::{dedup::{btrfs::BtrfsDedup, Deduper}, driver::{platterwalker::PlatterWalker, Driver}, opts::Opts, output::{groups::print_groups, tree::print_tree, treediff::print_treediff}, phase::Phase, print_statw, process::{calculate_dir_hash, export, find_shadowed}, stat_section_end, stat_section_start, state::State, util::*, vfs::VfsId, zip::setlocale_hack};
+use dupion::{dedup::{btrfs::BtrfsDedup, Deduper}, driver::{auto::AutoDriver, Driver}, opts::Opts, output::{groups::print_groups, tree::print_tree, treediff::print_treediff}, phase::Phase, print_statw, process::{calculate_dir_hash, export, find_shadowed}, stat_section_end, stat_section_start, state::State, util::*, vfs::VfsId, zip::setlocale_hack};
 use std::{io::{stderr, IsTerminal as _}, path::PathBuf, sync::atomic::Ordering, time::Duration};
 use parking_lot::RwLock;
 use clap::{Parser, ValueEnum};
@@ -37,10 +37,7 @@ fn main() {
         skip_no_phys: o.phys_only && o.fiemap != 0,
         euid,
         phys_required: matches!(o.dedup,Some(DedupMode::Btrfs)),
-        #[cfg(feature = "io_uring")]
-        uring: o.uring && !o.read_archives,
-        #[cfg(not(feature = "io_uring"))]
-        uring: false,
+        uring: !o.no_uring
     }));
 
     if opts.paths.is_empty() {
@@ -57,12 +54,8 @@ fn main() {
 
     opts.validate().unwrap();
 
-    if opts.uring {
-        #[cfg(feature = "io_uring")]
-        main_op(dupion::driver::uringer::Uringer::new(opts), o, opts);
-    } else {
-        main_op(PlatterWalker::new(opts), o, opts);
-    }
+    let driver = AutoDriver::new(opts);
+    main_op(driver, o, opts);
 }
 
 pub fn main_op(mut driver: impl Driver, o: OptInput, opts: &'static Opts) {
@@ -217,6 +210,8 @@ pub struct OptInput {
 
     /// Deduplication mode (-/btrfs). Disabled by default  
     /// btrfs: Use ioctl_file_dedupe_range on supported filesystems
+    /// 
+    /// If using btrfs dedup, is recommended to also --min-size 2048 --phys-only
     #[arg(long, verbatim_doc_comment)]
     pub dedup: Option<DedupMode>,
     /// EXPERIMENTAL Dedup even if first extent match. Currently this would dedup everything, even if already deduped. N/A with uring engine
@@ -237,11 +232,9 @@ pub struct OptInput {
     #[arg(short, long, default_value_t = 0)]
     pub threads: usize,
 
-    /// EXPERIMENTAL Use io_uring engine (no archive reading support yet, and mainly tuned toward dedup mode)
-    /// For dedup, recommended to also use --min-size 2048 --phys-only --dedup btrfs to skip not dedupable files (these will then also be absent from the cache)
+    /// Don't new new io_uring engine (only relevant if built with io_uring support)
     #[arg(long, verbatim_doc_comment)]
-    #[cfg(feature = "io_uring")]
-    pub uring: bool,
+    pub no_uring: bool,
 
     /// EXPERIMENTAL Read buffer in MiB
     #[arg(long, default_value_t = 1)]

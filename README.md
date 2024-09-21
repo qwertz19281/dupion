@@ -40,9 +40,9 @@ Deduplicate, no dups listing, don't use cache file
 ```
 dupion --dedup btrfs --no-cache -o - /home/user
 ```
-Deduplicate with faster io_uring engine (--min-size and --phys-only to skip files without deduplicatable extents):
+Deduplicate with optimization (--phys-only and --min-size to skip files that can't be deduped):
 ```
-dupion -o - --dedup btrfs --uring --phys-only --min-size 2048 --max-size 10G --prefetch-budget 256 --max-open-files 256 /home/user
+dupion --dedup btrfs --phys-only --min-size 2048 --max-size 10G -o - /home/user
 ```
 
 ## Usage (reduced)
