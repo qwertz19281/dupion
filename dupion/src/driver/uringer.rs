@@ -427,7 +427,7 @@ fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a 
                     true
                 },
                 Err(e) => {
-                    dprintln!("Error opening file {}: {e}", f.path.to_string_lossy());
+                    dprintln!("Error opening file {}: {e}", opts.path_disp(&f.path));
                     *f.error.borrow_mut() = Some(Box::new(e));
 
                     let mut s = state.borrow_mut();
@@ -523,7 +523,7 @@ fn uspawn_read_small_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, state: &'a Re
                 let res = match prev_readres.take() {
                     Some(Ok(v)) => v,
                     Some(Err(e)) => {
-                        dprintln!("Error reading file {}: {e}", f.path.to_string_lossy());
+                        dprintln!("Error reading file {}: {e}", opts.path_disp(&f.path));
                         *f.error.borrow_mut() = Some(Box::new(e));
                         return false;
                     },
@@ -594,7 +594,7 @@ async fn uread_big_file(f: RcBatchFile, big_file_read_size: usize, state: &RefCe
             let res = match prev_readres.take() {
                 Some(Ok(v)) => v,
                 Some(Err(e)) => {
-                    dprintln!("Error reading file {}: {e}", f.path.to_string_lossy());
+                    dprintln!("Error reading file {}: {e}", opts.path_disp(&f.path));
                     *f.error.borrow_mut() = Some(Box::new(e));
                     return Some(false);
                 },

@@ -147,7 +147,7 @@ impl Driver for PlatterWalker {
             }
         }
     }
-    fn new(_: &'static Opts) -> Self {
+    fn new(_: &mut Opts) -> Self {
         Self{
             entries: None,
         }
