@@ -385,7 +385,7 @@ fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a 
                                 *f.fiemap.borrow_mut() = Some(fm.clone());
                                 entry.phys = Some(fm.phys);
                                 entry.n_extents = Some(fm.n_extents);
-                                if let Some(mut ph) = fm.fiemap_hash.clone() {
+                                if let Some(ph) = fm.fiemap_hash.clone() {
                                     if let Entry::Occupied(fh) = s.fiemap2hash.entry((new_size,ph.clone())) {
                                         //dprintln!("FIEMAP SKIP EVENT {:?}",&fm);
                                         if let Some(ffh) = &entry.file_hash {
@@ -393,16 +393,20 @@ fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a 
                                                 dprintln!("FIEMAP-HASH IS BROKEN: {}",opts.path_disp(&f.path));
                                             }
                                         }
+                                        let had_fh = entry.file_hash.is_some();
                                         entry.file_hash = Some(fh.get().clone());
-                                        ph = fh.key().1.clone();
+                                        entry.phys_hash = Some(fh.key().1.clone());
                                         cancel_read = true;
+                                        if !had_fh {
+                                            s.push_to_hash_group(f.id,true,false).unwrap();
+                                        }
                                         // DISP_PROCESSED_BYTES.fetch_add(new_size, Relaxed);
                                         // DISP_PROCESSED_FILES.fetch_add(1, Relaxed);
                                     } else if let Some(fh) = &entry.file_hash {
                                         s.fiemap2hash.insert((new_size,ph.clone()), fh.clone());
                                         cancel_read = true;
+                                        entry.phys_hash = Some(ph.clone());
                                     }
-                                    entry.phys_hash = Some(ph.clone());
                                 }
                             },
                             Ok(None) | Err(ReadFiemapError::ExtentLimitExceeded) =>
