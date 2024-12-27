@@ -18,7 +18,7 @@ impl Deduper for BtrfsDedup {
 
         let max_dups_per_group = opts.limit_open_files(0, 4, 127) as u64;
 
-        let allow_range_split = false;
+        let allow_range_split = true;
 
         let mut cache_info = CacheUsable::new(file_split_round*2 .. opts.dedup_budget);
 
