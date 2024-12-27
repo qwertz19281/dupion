@@ -385,7 +385,8 @@ fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a 
                                 *f.fiemap.borrow_mut() = Some(fm.clone());
                                 entry.phys = Some(fm.phys);
                                 entry.n_extents = Some(fm.n_extents);
-                                if let Some(ph) = fm.fiemap_hash.clone() {
+                                if let Some(ph) = fm.fiemap_hash {
+                                    entry.phys_hash = Some(ph.clone());
                                     if let Entry::Occupied(fh) = s.fiemap2hash.entry((new_size,ph.clone())) {
                                         //dprintln!("FIEMAP SKIP EVENT {:?}",&fm);
                                         if let Some(ffh) = &entry.file_hash {
@@ -403,9 +404,8 @@ fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a 
                                         // DISP_PROCESSED_BYTES.fetch_add(new_size, Relaxed);
                                         // DISP_PROCESSED_FILES.fetch_add(1, Relaxed);
                                     } else if let Some(fh) = &entry.file_hash {
-                                        s.fiemap2hash.insert((new_size,ph.clone()), fh.clone());
+                                        s.fiemap2hash.insert((new_size,ph), fh.clone());
                                         cancel_read = true;
-                                        entry.phys_hash = Some(ph.clone());
                                     }
                                 }
                             },
