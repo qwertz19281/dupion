@@ -421,7 +421,6 @@ fn uspawn_open_single_file<'a>(f: RcBatchFile, tq: TaskQueueHandle, ordion: &'a 
 
                     if cancel_read {
                         s.tree[f.id].undo_disp_add_relevant();
-                        s.tree[f.id].phys = Some(0);
                         drop(state);
                         utryclose_single_file(v).await;
                         return false;
