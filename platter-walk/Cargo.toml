@@ -19,7 +19,7 @@ include = [
 
 
 [dependencies]
-btrfs = { path = "../rust-btrfs" }
+fiemap = { git = "https://github.com/qwertz19281/fiemap-rs", rev = "b2cfc146" }
 mnt = "0.3.1"
 libc = ">=0.2.70"
 rustc-hash = "1"

@@ -211,7 +211,7 @@ pub struct OptInput {
     /// Deduplication mode (-/btrfs). Disabled by default  
     /// btrfs: Use ioctl_file_dedupe_range on supported filesystems
     /// 
-    /// If using btrfs dedup, is recommended to also --min-size 2048 --phys-only
+    /// If using btrfs dedup, is recommended to also --min-size 2049 --phys-only
     #[arg(long, verbatim_doc_comment)]
     pub dedup: Option<DedupMode>,
     /// EXPERIMENTAL Dedup even if first extent match. Currently this would dedup everything, even if already deduped. N/A with uring engine

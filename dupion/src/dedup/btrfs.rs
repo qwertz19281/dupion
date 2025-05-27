@@ -216,9 +216,10 @@ pub fn dedup_group_batch(current: &[(DedupGroup,bool)], state: &mut State, opts:
 
         if opts.verbose {
             dprintln!(
-                "\tGroup {}B..{}B -> {} ({})",
+                "\tGroup {}B..{}B{} -> {} ({})",
                 SizeFormatterBinary::new(group.range.start),
                 SizeFormatterBinary::new(group.range.end),
+                if *last_part {"l"} else {" "},
                 opts.path_disp(&state.tree[group.senpai].path),
                 group.dups.len()+1,
             );
@@ -301,9 +302,10 @@ pub fn dedup_group_batch(current: &[(DedupGroup,bool)], state: &mut State, opts:
 
         if opts.verbose {
             dprintln!(
-                "\tDedup {}B..{}B -> {} ({})",
+                "\tDedup {}B..{}B{} -> {} ({})",
                 SizeFormatterBinary::new(group.range.start),
                 SizeFormatterBinary::new(group.range.end),
+                if last_part {"l"} else {" "},
                 opts.path_disp(senpai_path),
                 dups_fd.len()+1,
             );

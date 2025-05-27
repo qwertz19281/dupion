@@ -5,7 +5,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use btrfs::{get_file_extent_map_noloop, linux::{get_file_extent_map_for_path_noloop, FileExtent}, FileDescriptor};
+use fiemap::{fiemap_fd_n, fiemap_n, Fiemap, FiemapExtent, FiemapExtentFlags};
+//use btrfs::{get_file_extent_map_noloop, linux::{get_file_extent_map_for_path_noloop, FileExtent}, FileDescriptor};
 use rustc_hash::FxHashMap;
 use std::fs::*;
 use std::os::unix::fs::DirEntryExt;
@@ -14,7 +15,6 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::Path;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::io::AsRawFd;
-use std::os::unix::io::FromRawFd;
 use std::cmp::Reverse;
 
 pub struct Entry<D> where D: Default {
@@ -23,12 +23,12 @@ pub struct Entry<D> where D: Default {
     ino: u64,
     pub metadata: Option<std::fs::Metadata>,
     pub canon_path: Option<PathBuf>,
-    extents: Vec<FileExtent>,
+    extents: Vec<FiemapExtent>,
     pub data: D,
 }
 
 impl<D> Entry<D> where D: Default {
-    pub fn new(buf: PathBuf, ft: FileType, ino: u64, extents: Vec<FileExtent>, data: D) -> Self {
+    pub fn new(buf: PathBuf, ft: FileType, ino: u64, extents: Vec<FiemapExtent>, data: D) -> Self {
         Entry {
             path: buf,
             ftype: ft,
@@ -53,10 +53,10 @@ impl<D> Entry<D> where D: Default {
     }
 
     fn extent_sum(&self) -> u64 {
-        self.extents.iter().map(|e| e.length).sum()
+        self.extents.iter().map(|e| e.fe_length).sum()
     }
 
-    pub fn extents(&self) -> impl Iterator<Item=&FileExtent> {
+    pub fn extents(&self) -> impl Iterator<Item=&FiemapExtent> {
         self.extents.iter()
     }
 }
@@ -261,8 +261,8 @@ impl<D> ToScan<D> where D: Default {
             }
 
             for (p, extents) in device_groups {
-                let mut ordered_extents = extents.to_vec();
-                ordered_extents.sort_by_key(|e| e.physical);
+                let mut ordered_extents: Vec<FiemapExtent> = extents.to_vec();
+                ordered_extents.sort_by_key(|e| e.fe_physical);
 
                 if let Ok(f) = File::open(p) {
 
@@ -270,18 +270,18 @@ impl<D> ToScan<D> where D: Default {
 
                     while i < ordered_extents.len() {
                         let ext1 = ordered_extents[i];
-                        let offset = ext1.physical;
-                        let mut end = offset + ext1.length;
+                        let offset = ext1.fe_physical;
+                        let mut end = offset + ext1.fe_length;
 
                         for j in i+1..ordered_extents.len() {
                             let ref ext2 = ordered_extents[j];
-                            if ext2.physical > end {
+                            if ext2.fe_physical > end {
                                 break;
                             }
 
                             i = j;
 
-                            end = ext2.physical+ext2.length;
+                            end = ext2.fe_physical+ext2.fe_length;
                         }
 
                         i+=1;
@@ -368,13 +368,13 @@ impl<D> Iterator for ToScan<D> where D: Default {
                     // move to inode pass? won't start the next dir before this one is done anyway
                     if meta.is_dir() {
 
-                        let extents = get_file_extent_map_for_path_noloop(dent.path())
-                            .unwrap_or_else(|_| Vec::new() );
+                        let extents = fiemap_n::<FIEMAP_FETCH,_>(dent.path())
+                            .map_or(Vec::new(), filter_extents);
 
                         let to_add = Entry::new(dent.path(), meta, dent.ino(), extents, D::default());
 
                         if !to_add.extents.is_empty() {
-                            let offset = to_add.extents[0].physical;
+                            let offset = to_add.extents[0].fe_physical;
                             self.add(to_add, Some(offset));
                         } else {
                             // TODO: fall back to inode-order? depth-first?
@@ -421,16 +421,20 @@ impl<D> Iterator for ToScan<D> where D: Default {
                 },
                 Order::Content => {
                     for mut e in self.inode_ordered.drain(..).rev() {
-                        let (meta,extents) = file_meta_and_extents(e.path());
-                        let offset = match extents {
-                            Ok(ref extents) if !extents.is_empty() => extents[0].physical,
-                            _ => 0
-                        };
-                        //The metadata should now be cached by the OS, so file size read shouldn't be slow
-                        if e.ftype.is_file() {
-                            if let Ok(meta) = meta {
-                                e.metadata = Some(meta);
+                        let mut offset = 0;
+                        if let Ok(file) = File::options().read(true).open(e.path()) {
+                            offset = fiemap_fd_n::<FIEMAP_FETCH>(&file).map_or(0, first_extent);
+
+                            let meta = file.metadata();
+
+                            //The metadata should now be cached by the OS, so file size read shouldn't be slow
+                            if e.ftype.is_file() {
+                                if let Ok(meta) = meta {
+                                    e.metadata = Some(meta);
+                                }
                             }
+                        }
+                        if e.ftype.is_file() {
                             /*if let Ok(canon) = std::fs::canonicalize(e.path()) {
                                 assert_eq!(canon,e.path());
                                 e.canon_path = Some(canon);
@@ -462,26 +466,43 @@ impl<D> Iterator for ToScan<D> where D: Default {
 
 }
 
-pub fn file_meta_and_extents(path: impl AsRef<Path>) -> (Result<Metadata,String>,Result<Vec<FileExtent>,String>) {
-    let fd = FileDescriptor::open(
-		&path,
-		libc::O_RDONLY,
-    );
-    
-    let fd = match fd {
-        Ok(v) => v,
-        Err(e) => {
-            let s = format!("{}",e);
-            return (Err(s.clone()),Err(s));
-        }
-    };
+const FIEMAP_FETCH: usize = 64;
 
-    let extents = get_file_extent_map_noloop (
-        fd.get_value());
-    
-    let file = unsafe{File::from_raw_fd(fd.get_value())};
-    let meta = file.metadata().map_err(|e| format!("{}",e) );
-    std::mem::forget(file);
-    
-    (meta,extents)
+pub fn legal_flags() -> FiemapExtentFlags {
+    FiemapExtentFlags::LAST |
+    FiemapExtentFlags::ENCODED |
+    FiemapExtentFlags::DATA_ENCRYPTED |
+    FiemapExtentFlags::NOT_ALIGNED |
+    FiemapExtentFlags::DATA_TAIL |
+    FiemapExtentFlags::UNWRITTEN |
+    FiemapExtentFlags::MERGED |
+    FiemapExtentFlags::SHARED
+}
+
+fn filter_extents<const N: usize>(extents: Fiemap<N>) -> Vec<FiemapExtent> {
+    let mut dest = Vec::new();
+
+    for v in extents {
+        //eprintln!("{:?}", v);
+        if let Ok(v) = v {
+            if !(!legal_flags()).intersects(v.fe_flags) {
+                dest.push(v)
+            }
+        } else {
+            break;
+        }
+    }
+
+    dest
+}
+
+fn first_extent<const N: usize>(extents: Fiemap<N>) -> u64 {
+    for v in extents {
+        if let Ok(v) = v {
+            if !(!legal_flags()).intersects(v.fe_flags) {
+                return v.fe_physical;
+            }
+        }
+    }
+    0
 }

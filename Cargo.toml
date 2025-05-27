@@ -10,6 +10,8 @@ members = [
 ]
 
 [profile.release]
+#debug = true
+#strip = false
 codegen-units = 1
 lto = true
 
@@ -21,3 +23,6 @@ opt-level = 0
 opt-level = 0
 [profile.release.package.serde_derive]
 opt-level = 0
+
+[patch."https://github.com/qwertz19281/dupion_glommio"]
+#glommio = { path = "../dupion_glommio/glommio" }
